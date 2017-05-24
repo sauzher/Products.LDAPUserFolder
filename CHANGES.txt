@@ -3,6 +3,7 @@ Change log for Products.LDAPUserFolder
 
 2.28 (unreleased)
 -----------------
+- Change encoding to utf-8.
 
 
 2.27 (2014-04-23)

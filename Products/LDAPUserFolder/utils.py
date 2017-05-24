@@ -60,7 +60,7 @@ VALID_GROUP_ATTRIBUTES = Set([ 'name'
                              , 'mail'
                              ]).union(GROUP_MEMBER_ATTRIBUTES)
 
-encoding = 'latin1'
+encoding = 'utf-8'
 
 
 #################################################
