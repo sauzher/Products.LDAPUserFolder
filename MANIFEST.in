@@ -1,0 +1,7 @@
+recursive-include Products *
+include *.rst
+include *.txt
+include *.py
+global-exclude *.pyc
+global-exclude ._*
+global-exclude *.mo
