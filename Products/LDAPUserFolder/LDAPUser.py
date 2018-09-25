@@ -28,6 +28,7 @@ from App.class_init import default__class_init__ as InitializeClass
 from DateTime import DateTime
 
 # LDAPUserFolder package imports
+from Products.LDAPUserFolder.sid2str import sid2str
 from Products.LDAPUserFolder.utils import encoding
 from Products.LDAPUserFolder.utils import _verifyUnicode
 
@@ -80,6 +81,9 @@ class LDAPUser(BasicUser):
                 prop = user_attrs.get(key, [None])
             else:
                 prop = user_attrs.get(key, [None])[0]
+
+            if key == 'objectSid':
+                prop = sid2str(prop)
 
             if isinstance(prop, str) and key != 'objectGUID':
                 prop = _verifyUnicode(prop)
