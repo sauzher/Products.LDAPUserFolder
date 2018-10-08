@@ -4,7 +4,9 @@ Change log for Products.LDAPUserFolder
 2.28.post2 (unreleased)
 -----------------------
 
-- Nothing changed yet.
+- Add support for handling and decoding the objectSid attribute
+  from Active Directory.
+  [buchi]
 
 
 2.28.post1 (2017-07-12)
