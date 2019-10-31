@@ -69,6 +69,12 @@ _dtmldir = os.path.join(package_home(globals()), 'dtml')
 EDIT_PERMISSION = 'Change user folder'
 
 
+def safe_utf8(s):
+    if isinstance(s, unicode):
+        s = s.encode('utf8')
+    return s
+
+
 class LDAPUserFolder(BasicUserFolder):
     """
         LDAPUserFolder
@@ -691,7 +697,7 @@ class LDAPUserFolder(BasicUserFolder):
         extra_filter = self.getProperty('_extra_user_filter')
         if extra_filter:
             user_filter_list.append(extra_filter)
-        user_filter = '(&%s)' % ''.join(user_filter_list)
+        user_filter = '(&%s)' % ''.join(map(safe_utf8, user_filter_list))
 
         return user_filter
 
