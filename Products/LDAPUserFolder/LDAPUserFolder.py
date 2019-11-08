@@ -1699,6 +1699,10 @@ class LDAPUserFolder(BasicUserFolder):
                 user_obj = self.getUserByDN(to_utf8(dn))
                 self._expireUser(user_obj)
 
+            else:
+                # Extranet patch:
+                raise ValueError(err_msg)
+
         if REQUEST:
             return self.manage_userrecords( manage_tabs_message=err_msg or msg
                                           , user_dn=dn
