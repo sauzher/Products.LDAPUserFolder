@@ -9,7 +9,7 @@
 <form action="manage_edit" method="post">
 
   <table cellspacing="0" cellpadding="3">
-  
+
     <tr>
       <td align="left" valign="top" class="form-optional">
         Title
@@ -18,17 +18,17 @@
         <input type="text" name="title" size="40" value="&dtml-title;" />
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         LDAP User Folder
       </td>
       <td align="left" valign="top" class="form-element">
         <select name="luf">
-          <dtml-let my_path="_.string.join( this().getPhysicalPath(), '/' )">
+          <dtml-let my_path="'/'.join( this().getPhysicalPath())">
             <dtml-in "superValues( [ 'LDAPUserFolder' ] )">
-              <dtml-let luf_path="_.string.join(getPhysicalPath(), '/')"
-                        my_luf_path="_.string.join(getLUF().getPhysicalPath(), '/')"
+              <dtml-let luf_path="'/'.join(here.getPhysicalPath())"
+                        my_luf_path="'/'.join(getLUF().getPhysicalPath())"
                         sel="luf_path == my_luf_path and 'selected' or ''">
                 <dtml-if "my_path != luf_path">
                   <option value="&dtml-luf_path;" &dtml-sel;>
@@ -47,7 +47,7 @@
         Groups Base DN
       </td>
       <td align="left" valign="top" class="form-element">
-        <input type="text" name="groups_base" size="40" 
+        <input type="text" name="groups_base" size="40"
                value="&dtml-groups_base;" />
       </td>
     </tr>
@@ -70,7 +70,7 @@
         </select>
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-optional">
         Operation *
@@ -86,7 +86,7 @@
         </select>
       </td>
     </tr>
-  
+
     <tr>
       <td>&nbsp;</td>
       <td colspan="3">
@@ -94,7 +94,7 @@
         <input type="submit" value=" Apply Changes ">
       </td>
     </tr>
-  
+
   </table>
 
 </form>
@@ -147,7 +147,7 @@
         <dtml-var name="sequence-key">
       </td>
       <td class="form-text">
-        <dtml-var "_.string.join( _['sequence-item'], ', ' )">
+        <dtml-var "', '.join( _['sequence-item'])">
       </td>
     </tr>
 

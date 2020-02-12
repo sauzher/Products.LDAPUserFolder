@@ -8,12 +8,12 @@ from Products.CMFDefault.utils import Message as _
 
 mtool = getToolByName(script, 'portal_membership')
 mdtool = getToolByName(script, 'portal_memberdata')
-ptool = getUtilityByInterfaceName('Products.CMFCore.interfaces.IPropertiesTool')
+ptool = getUtilityByInterfaceName(
+    'Products.CMFCore.interfaces.IPropertiesTool')
 rtool = getToolByName(script, 'portal_registration')
 
-properties = { 'username' : member_id
-             , 'email' : member_email
-             }
+properties = {'username': member_id, 'email': member_email
+              }
 for prop_info in mdtool.getSortedMemberProperties():
     key = prop_info['ldap_name']
     value = kw.get(key, None)
@@ -22,13 +22,10 @@ for prop_info in mdtool.getSortedMemberProperties():
         properties[key] = value
 
 try:
-    rtool.addMember( id=member_id
-                   , password=password
-                   , properties=properties
-                   , REQUEST=context.REQUEST
-                   )
+    rtool.addMember(id=member_id, password=password, properties=properties, REQUEST=context.REQUEST
+                    )
 
-except ValueError, errmsg:
+except ValueError as errmsg:
     return context.setStatus(False, errmsg)
 else:
     if ptool.getProperty('validate_email') or send_password:

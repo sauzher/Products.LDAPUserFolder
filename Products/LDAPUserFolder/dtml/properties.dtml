@@ -5,14 +5,14 @@
 </dtml-with>
 
 <p class="form-help">
-  Change the basic properties of your LDAPUserFolder 
+  Change the basic properties of your LDAPUserFolder
   on this form.
 </p>
 
 <form action="manage_edit" method="post">
 
   <table cellspacing="0" cellpadding="3">
-  
+
     <tr>
       <td align="left" valign="top" class="form-optional">
         Title
@@ -21,7 +21,7 @@
         <input type="text" name="title" size="40" value="&dtml-title;" />
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         Login Name Attribute
@@ -39,14 +39,14 @@
                 </option>
               </dtml-let>
             </dtml-in>
-            <option value="dn" <dtml-if "la=='dn'">selected</dtml-if>> 
-              Distinguished Name (dn) 
+            <option value="dn" <dtml-if "la=='dn'">selected</dtml-if>>
+              Distinguished Name (dn)
             </option>
           </dtml-let>
         </select>
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         User ID Attribute
@@ -63,8 +63,8 @@
                 </option>
               </dtml-let>
             </dtml-in>
-            <option value="dn" <dtml-if "la=='dn'">selected</dtml-if>> 
-              Distinguished Name (dn) 
+            <option value="dn" <dtml-if "la=='dn'">selected</dtml-if>>
+              Distinguished Name (dn)
             </option>
           </dtml-let>
         </select>
@@ -90,7 +90,7 @@
         </select>
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         Users Base DN
@@ -115,7 +115,7 @@
           </options>
         </select></td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         Group storage
@@ -133,7 +133,7 @@
         </dtml-let>
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         Group mapping (Applies to LDAP group storage only)
@@ -151,13 +151,13 @@
         </dtml-let>
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         Groups Base DN
       </td>
       <td align="left" valign="top">
-        <input type="text" name="groups_base" size="40" 
+        <input type="text" name="groups_base" size="40"
                value="<dtml-var name="groups_base">">
       </td>
       <td align="left" valign="top" class="form-label">
@@ -176,20 +176,20 @@
           </option>
         </select></td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-optional">
         Manager DN
       </td>
       <td align="left" valign="top">
-        <input type="text" name="binduid:string" size="40" 
+        <input type="text" name="binduid:string" size="40"
                value="<dtml-var expr="getProperty('_binduid')">" />
       </td>
       <td align="left" valign="top" class="form-optional">
         Password
       </td>
       <td align="left" valign="top">
-        <input type="password" name="bindpwd:string" size="13" 
+        <input type="password" name="bindpwd:string" size="13"
                value="<dtml-var expr="getEncryptedBindPassword()">">
       </td>
     </tr>
@@ -201,14 +201,14 @@
       <td align="left" valign="top">
         <dtml-let usg="getProperty('_binduid_usage')">
           <select name="binduid_usage:int">
-            <option value="0" <dtml-if "usg == 0">selected</dtml-if>> 
-              Never 
+            <option value="0" <dtml-if "usg == 0">selected</dtml-if>>
+              Never
             </option>
-            <option value="1" <dtml-if "usg == 1">selected</dtml-if>> 
-              Always 
+            <option value="1" <dtml-if "usg == 1">selected</dtml-if>>
+              Always
             </option>
-            <option value="2" <dtml-if "usg == 2">selected</dtml-if>> 
-              For login data lookup only 
+            <option value="2" <dtml-if "usg == 2">selected</dtml-if>>
+              For login data lookup only
             </option>
           </select>
         </dtml-let>
@@ -222,7 +222,7 @@
         </dtml-let>
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         User object classes
@@ -230,7 +230,7 @@
       <td align="left" valign="top">
         <dtml-let oc="getProperty( '_user_objclasses' )">
           <input type="text" name="obj_classes" size="40"
-                 value="<dtml-var expr="_.string.join( oc, ',' )">" />
+                 value="<dtml-var expr="','.join( oc )">" />
         </dtml-let>
       </td>
     </tr>
@@ -247,7 +247,7 @@
         Danger! See the online help for details.
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         User password encryption
@@ -264,19 +264,19 @@
         </select>
       </td>
     </tr>
-  
+
     <tr>
       <td align="left" valign="top" class="form-label">
         Default User Roles
       </td>
       <td align="left" valign="top" colspan="3">
         <dtml-let rls="getProperty( '_roles' )">
-          <input type="text" name="roles" size="40" 
-                 value="<dtml-var expr="_.string.join( rls, ',' )">" />
+          <input type="text" name="roles" size="40"
+                 value="<dtml-var expr="'.'.join( rls )">" />
         </dtml-let>
       </td>
     </tr>
-   
+
     <tr>
       <td>&nbsp;</td>
       <td colspan="3">
@@ -284,7 +284,7 @@
         <input type="submit" value=" Apply Changes ">
       </td>
     </tr>
-  
+
   </table>
 </form>
 

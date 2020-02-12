@@ -32,9 +32,12 @@ from Products.LDAPUserFolder.sid2str import sid2str
 from Products.LDAPUserFolder.utils import encoding
 from Products.LDAPUserFolder.utils import _verifyUnicode
 
+unicode = str
+
 
 class NonexistingUser:
     """Fake user we can use in our negative cache."""
+
     def __init__(self):
         self.birth = DateTime()
 
@@ -50,18 +53,8 @@ class LDAPUser(BasicUser):
     security = ClassSecurityInfo()
     _properties = None
 
-    def __init__( self
-                , uid
-                , name
-                , password
-                , roles
-                , domains
-                , user_dn
-                , user_attrs
-                , mapped_attrs
-                , multivalued_attrs=()
-                , ldap_groups=()
-                ):
+    def __init__(self, uid, name, password, roles, domains, user_dn, user_attrs, mapped_attrs, multivalued_attrs=(), ldap_groups=()
+                 ):
         """ Instantiate a new LDAPUser object """
         self._properties = {}
         self.id = _verifyUnicode(uid)
@@ -71,7 +64,7 @@ class LDAPUser(BasicUser):
         self.roles = roles
         self.domains = []
         self._ldap_groups = ldap_groups
-        self.RID = '' 
+        self.RID = ''
         self.groups = ''
         now = time.time()
         self._created = now
@@ -100,9 +93,10 @@ class LDAPUser(BasicUser):
     #######################################################
 
     security.declarePublic('getId')
+
     def getId(self):
-        if isinstance(self.id, unicode):
-            return self.id.encode(encoding)
+        if isinstance(self.id, bytes):
+            return self.id.decode(encoding)
 
         return self.id
 
@@ -111,21 +105,22 @@ class LDAPUser(BasicUser):
     #######################################################
 
     security.declarePrivate('_getPassword')
+
     def _getPassword(self):
         """ Retrieve the password """
         return self.__
 
-
     security.declarePublic('getUserName')
+
     def getUserName(self):
         """ Get the name associated with this user """
-        if isinstance(self.name, unicode):
-            return self.name.encode(encoding)
+        if isinstance(self.name, bytes):
+            return self.name.decode(encoding)
 
         return self.name
 
-
     security.declarePublic('getRoles')
+
     def getRoles(self):
         """ Return the user's roles """
         if self.name == 'Anonymous User':
@@ -133,12 +128,11 @@ class LDAPUser(BasicUser):
         else:
             return tuple(self.roles) + ('Authenticated',)
 
-
     security.declarePublic('getDomains')
+
     def getDomains(self):
         """ The user's domains """
         return self.domains
-
 
     #######################################################
     # Overriding these to enable context-based role
@@ -158,7 +152,6 @@ class LDAPUser(BasicUser):
 
         return roles
 
-
     def allowed(self, object, object_roles=None):
         """ Must override, getRolesInContext is not always called """
         if BasicUser.allowed(self, object, object_roles):
@@ -175,8 +168,8 @@ class LDAPUser(BasicUser):
 
         return 0
 
-
     security.declarePrivate('_getSatellite')
+
     def _getSatellite(self, object):
         """ Get the acl_satellite (sometimes tricky!) """
         while 1:
@@ -197,58 +190,56 @@ class LDAPUser(BasicUser):
 
         return None
 
-
     #######################################################
     # Interface unique to the LDAPUser class of user objects
     #######################################################
 
     security.declareProtected(access_contents_information, '__getattr__')
+
     def __getattr__(self, name):
         """ Look into the _properties as well... """
         my_props = self._properties
 
-        if my_props.has_key(name):
+        if name in my_props:
             prop = my_props.get(name)
 
-            if isinstance(prop, unicode):
-                prop = prop.encode(encoding)
+            if isinstance(prop, bytes):
+                prop = prop.decode(encoding)
 
             return prop
 
         else:
-            raise AttributeError, name
-
+            raise AttributeError(name)
 
     security.declareProtected(access_contents_information, 'getProperty')
+
     def getProperty(self, prop_name, default=''):
-        """ 
+        """
             Return the user property referred to by prop_name,
             if the attribute is indeed public.
         """
         prop = self._properties.get(prop_name, default)
-        if isinstance(prop, unicode):
-            prop = prop.encode(encoding)
-            
+        if isinstance(prop, bytes):
+            prop = prop.decode(encoding)
+
         return prop
 
-
     security.declareProtected(access_contents_information, 'getUserDN')
+
     def getUserDN(self):
         """ Return the user's full Distinguished Name """
-        if isinstance(self._dn, unicode):
-            return self._dn.encode(encoding)
+        if isinstance(self._dn, bytes):
+            return self._dn.decode(encoding)
 
         return self._dn
-
 
     def getCreationTime(self):
         """ When was this user object created? """
         return DateTime(self._created)
 
-
     def _getLDAPGroups(self):
         """ What groups in LDAP does this user belong to? """
         return tuple(self._ldap_groups)
-    
+
 
 InitializeClass(LDAPUser)

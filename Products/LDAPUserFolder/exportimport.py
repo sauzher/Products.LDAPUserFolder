@@ -27,13 +27,8 @@ from Products.GenericSetup.utils import XMLAdapterBase
 
 from Products.LDAPUserFolder.interfaces import ILDAPUserFolder
 
-PROPERTIES = ( 'title', '_login_attr', '_uid_attr', 'users_base'
-             , 'users_scope', '_roles',  'groups_base', 'groups_scope'
-             , '_binduid', '_bindpwd', '_binduid_usage', '_rdnattr'
-             , '_user_objclasses', '_local_groups', '_implicit_mapping'
-             , '_pwd_encryption', 'read_only', '_extra_user_filter'
-             , '_anonymous_timeout', '_authenticated_timeout'
-             )
+PROPERTIES = ('title', '_login_attr', '_uid_attr', 'users_base', 'users_scope', '_roles', 'groups_base', 'groups_scope', '_binduid', '_bindpwd', '_binduid_usage', '_rdnattr', '_user_objclasses', '_local_groups', '_implicit_mapping', '_pwd_encryption', 'read_only', '_extra_user_filter', '_anonymous_timeout', '_authenticated_timeout'
+              )
 
 
 class LDAPUserFolderXMLAdapter(XMLAdapterBase):
@@ -57,7 +52,7 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
         node.appendChild(self._extractLDAPSchema())
 
         self._logger.info('LDAPUserFolder at %s exported.' % (
-                                    self.context.absolute_url_path()))
+            self.context.absolute_url_path()))
         return node
 
     def _importNode(self, node):
@@ -74,7 +69,7 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
         self._initLDAPSchema(node)
 
         self._logger.info('LDAPUserFolder at %s imported.' % (
-                                    self.context.absolute_url_path()))
+            self.context.absolute_url_path()))
 
     node = property(_exportNode, _importNode)
 
@@ -103,7 +98,7 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
             else:
                 if isinstance(prop_value, str):
                     prop_value = prop_value.decode(self._encoding)
-                elif not isinstance(prop_value, basestring):
+                elif not isinstance(prop_value, str):
                     prop_value = unicode(prop_value)
                 child = self._doc.createTextNode(prop_value)
                 node.appendChild(child)
@@ -208,8 +203,8 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
             if child.nodeName != 'property':
                 continue
 
-            multivalues = [x for x in child.childNodes if 
-                                    x.nodeType == child.ELEMENT_NODE]
+            multivalues = [x for x in child.childNodes if
+                           x.nodeType == child.ELEMENT_NODE]
 
             if multivalues:
                 value = self._readSequenceValue(multivalues)
@@ -246,9 +241,10 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
             if child.nodeName != 'additional-groups':
                 continue
 
-        value_nodes = [x for x in child.childNodes if 
-                                  x.nodeType == child.ELEMENT_NODE]
-        self.context._additional_groups = self._readSequenceValue(value_nodes)
+        value_nodes = [x for x in child.childNodes if
+                       x.nodeType == child.ELEMENT_NODE]
+        self.context._additional_groups = self._readSequenceValue(
+            value_nodes)
 
     def _initGroupMap(self, node):
         """ Initialize LDAP group to Zope role mapping
@@ -266,10 +262,10 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
 
                 key = grandchild.getAttribute('ldap_group')
                 value = grandchild.getAttribute('zope_role')
-                group_map[key.encode(self._encoding)]=value.encode(self._encoding)
+                group_map[key.encode(self._encoding)] = value.encode(
+                    self._encoding)
 
         self.context._groups_mappings = group_map
-
 
     def _initGroupsStore(self, node):
         """ Initialize locally stored user/group map
@@ -285,9 +281,10 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
                 if grandchild.nodeName != 'user':
                     continue
 
-                user_dn = grandchild.getAttribute('dn').encode(self._encoding)
-                values = [x for x in grandchild.childNodes if 
-                                        x.nodeType == child.ELEMENT_NODE]
+                user_dn = grandchild.getAttribute(
+                    'dn').encode(self._encoding)
+                values = [x for x in grandchild.childNodes if
+                          x.nodeType == child.ELEMENT_NODE]
                 role_dns = self._readSequenceValue(values)
                 groups_store[user_dn] = role_dns
 
@@ -319,35 +316,35 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
                 if port:
                     port = int(port)
                 self.context.manage_addServer(
-                    grandchild.getAttribute('host').encode(self._encoding)
-                  , port=port
-                  , use_ssl=use_ssl
-                  , conn_timeout=int(grandchild.getAttribute('conn_timeout'))
-                  , op_timeout=int(grandchild.getAttribute('op_timeout'))
-                  )
+                    grandchild.getAttribute('host').encode(self._encoding), port=port, use_ssl=use_ssl, conn_timeout=int(grandchild.getAttribute('conn_timeout')), op_timeout=int(grandchild.getAttribute('op_timeout'))
+                )
 
     def _initLDAPSchema(self, node):
         """ Initialize LDAP schema information
         """
-        # ldap-schema/schema-item/friendly_name/ldap_name/multivalued/binary/public_name
+        # ldap-schema/schema-item/friendly_name/ldap_name/multivalued/binary/integer/public_name
         for child in node.childNodes:
             if child.nodeName != 'ldap-schema':
                 continue
 
             if child.getAttribute('purge').lower() == 'true':
                 self.context._ldapschema = {}
-            
+
             for grandchild in child.childNodes:
                 if grandchild.nodeName != 'schema-item':
                     continue
-                get = lambda n: grandchild.getAttribute(n).encode(self._encoding)
-                
+
+                def get(n): return grandchild.getAttribute(
+                    n).encode(self._encoding)
+
                 ldap_name = get('ldap_name')
                 item = self.context._ldapschema.setdefault(ldap_name, {})
-                
-                item['binary'] = get('binary').lower() in ('true','yes')
+
+                item['binary'] = get('binary').lower() in ('true', 'yes')
+                item['integer'] = get('integer').lower() in ('true', 'yes')
                 item['friendly_name'] = get('friendly_name')
-                item['multivalued'] = get('multivalued').lower() in ('true','yes')
+                item['multivalued'] = get(
+                    'multivalued').lower() in ('true', 'yes')
                 item['public_name'] = get('public_name')
                 item['ldap_name'] = ldap_name
 

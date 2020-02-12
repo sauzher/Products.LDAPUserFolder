@@ -45,6 +45,7 @@ from App.special_dtml import DTMLFile
 from BTrees.OOBTree import OOBTree
 from OFS.SimpleItem import SimpleItem
 from zope.interface import implements
+from zope.interface import implementer
 
 # LDAPUserFolder package imports
 from Products.LDAPUserFolder.interfaces import ILDAPUserFolder
@@ -70,11 +71,12 @@ EDIT_PERMISSION = 'Change user folder'
 
 
 def safe_utf8(s):
-    if isinstance(s, unicode):
-        s = s.encode('utf8')
+    if isinstance(s, bytes):
+        s = s.decode('utf8')
     return s
 
 
+@implementer(ILDAPUserFolder)
 class LDAPUserFolder(BasicUserFolder):
     """
         LDAPUserFolder
@@ -85,7 +87,6 @@ class LDAPUserFolder(BasicUserFolder):
         returns a Zope user object of type LDAPUser
     """
 
-    implements(ILDAPUserFolder)
 
     security = ClassSecurityInfo()
 
@@ -175,12 +176,14 @@ class LDAPUserFolder(BasicUserFolder):
                                     , 'multivalued' : False
                                     , 'public_name' : ''
                                     , 'binary' : False
+                                    , 'integer': False
                                     }
                            , 'sn' : { 'ldap_name' : 'sn'
                                     , 'friendly_name' : 'Last Name'
                                     , 'multivalued' : False
                                     , 'public_name' : ''
                                     , 'binary' : False
+                                    , 'integer': False
                                     }
                            }
 
@@ -366,7 +369,7 @@ class LDAPUserFolder(BasicUserFolder):
         """ Set a property on the LDAP User Folder object """
         if not hasattr(self, prop_name):
             msg = 'No property "%s" on the LDAP User Folder' % prop_name
-            raise AttributeError, msg
+            raise AttributeError(msg)
 
         setattr(self, prop_name, prop_value)
 
@@ -383,7 +386,7 @@ class LDAPUserFolder(BasicUserFolder):
             self._setProperty(prop_name, prop_value)
             self._clearCaches()
             msg = 'Attribute "%s" changed.' % prop_name
-        except AttributeError, e:
+        except AttributeError(e):
             msg = e.args[0]
 
         if REQUEST is not None:
@@ -424,7 +427,7 @@ class LDAPUserFolder(BasicUserFolder):
                              read_only=read_only,
                            )
 
-        if isinstance(roles, basestring):
+        if isinstance(roles, str):
             roles = [x.strip() for x in roles.split(',')]
         self._roles = roles
 
@@ -437,7 +440,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         self._pwd_encryption = encryption
 
-        if isinstance(obj_classes, basestring):
+        if isinstance(obj_classes, str):
             obj_classes = [x.strip() for x in obj_classes.split(',')]
         self._user_objclasses = obj_classes
 
@@ -534,6 +537,14 @@ class LDAPUserFolder(BasicUserFolder):
         """ Return sequence of binary user attributes"""
         schema = self.getSchemaDict()
         bins = [x['ldap_name'] for x in schema if x.get('binary', '')]
+
+        return tuple(bins)
+
+    security.declareProtected(manage_users, 'getBinaryUserAttrs')
+    def getIntegerUserAttrs(self):
+        """ Return sequence of integer user attributes"""
+        schema = self.getSchemaDict()
+        bins = [x['ldap_name'] for x in schema if x.get('integer', '')]
 
         return tuple(bins)
 
@@ -673,7 +684,7 @@ class LDAPUserFolder(BasicUserFolder):
 
     security.declarePrivate('_getUserFilterString')
     def _getUserFilterString(self, filters=[]):
-        """ Return filter string suitable for querying on user objects 
+        """ Return filter string suitable for querying on user objects
 
         A filter is constructed from the following elements:
 
@@ -681,8 +692,8 @@ class LDAPUserFolder(BasicUserFolder):
 
         o if a sequence of filters is passed in, it is added
 
-        o if no sequence of filters is passed in then a wildcard filter 
-          for all records with the attribute from the ZMI UID attribute 
+        o if no sequence of filters is passed in then a wildcard filter
+          for all records with the attribute from the ZMI UID attribute
           configuration is added
 
         o if the Additional user search filter has been configured in the
@@ -711,11 +722,12 @@ class LDAPUserFolder(BasicUserFolder):
         """
         if not value:
             return None
-        
+
+        _pwd = pwd and pwd.encode() or b''
         cache_type = pwd and 'authenticated' or 'anonymous'
         negative_cache_key = '%s:%s:%s' % ( name
                                           , value
-                                          , sha_new(pwd or '').hexdigest()
+                                          , sha_new(_pwd).hexdigest()
                                           )
         if cache:
             if self._cache('negative').get(negative_cache_key) is not None:
@@ -847,8 +859,8 @@ class LDAPUserFolder(BasicUserFolder):
         if not name:
             return None
 
-        if ( superuser and 
-             name == superuser.getUserName() and 
+        if ( superuser and
+             name == superuser.getUserName() and
              superuser.authenticate(password, request) ):
             user = superuser
         else:
@@ -871,7 +883,7 @@ class LDAPUserFolder(BasicUserFolder):
     security.declareProtected(manage_users, 'getUserDetails')
     def getUserDetails(self, encoded_dn, format=None, attrs=()):
         """ Return all attributes for a given DN """
-        dn = to_utf8(urllib.unquote(encoded_dn))
+        dn = to_utf8(urllib.parse.unquote(encoded_dn))
 
         if not attrs:
             attrs = self.getSchemaConfig().keys()
@@ -890,7 +902,7 @@ class LDAPUserFolder(BasicUserFolder):
             value_dict = res['results'][0]
 
             if format == None:
-                result = value_dict.items()
+                result = list(value_dict.items())
                 result.sort()
             elif format == 'dictionary':
                 result = value_dict
@@ -907,7 +919,7 @@ class LDAPUserFolder(BasicUserFolder):
     def getGroupDetails(self, encoded_cn):
         """ Return all group details """
         result = ()
-        cn = urllib.unquote(encoded_cn)
+        cn = urllib.parse.unquote(encoded_cn)
 
         if not self._local_groups:
             res = self._delegate.search( base=self.groups_base
@@ -1345,7 +1357,7 @@ class LDAPUserFolder(BasicUserFolder):
         mappings = getattr(self, '_groups_mappings', {})
 
         for group_name in group_names:
-            if mappings.has_key(group_name):
+            if group_name in mappings:
                 del mappings[group_name]
 
         self._groups_mappings = mappings
@@ -1393,8 +1405,13 @@ class LDAPUserFolder(BasicUserFolder):
     security.declareProtected(manage_users, 'getSchemaDict')
     def getSchemaDict(self):
         """ Retrieve schema as list of dictionaries """
-        all_items = self.getSchemaConfig().values()
-        all_items.sort()
+
+        # XXX: dunno why sort values that are actually a list of dict
+        # what is supposed to sort what?? schemaconfig example: {'a': {'tre': 3}, 'b': {'qua': 4}}
+        # so keep some sort of predictiable sort by len of dict
+
+        all_items = list(self.getSchemaConfig().values())
+        all_items.sort(key = lambda x: len(x))
 
         return tuple(all_items)
 
@@ -1419,6 +1436,7 @@ class LDAPUserFolder(BasicUserFolder):
                                 , multivalued=False
                                 , public_name=''
                                 , binary=False
+                                , integer=False
                                 , REQUEST=None
                                 ):
         """ Add a schema item to my list of known schema items """
@@ -1429,6 +1447,7 @@ class LDAPUserFolder(BasicUserFolder):
                                 , 'public_name' : public_name
                                 , 'multivalued' : multivalued
                                 , 'binary' : binary
+                                , 'integer' : integer
                                 }
 
             self.setSchemaConfig(schema)
@@ -1544,6 +1563,8 @@ class LDAPUserFolder(BasicUserFolder):
 
                 if names.get('binary', None) and attr_val:
                     attr_dict['%s;binary' % attribute] = [attr_val]
+                #elif names.get('integer', None) and attr_val:
+                #    attr_dict['%s;integer' % attribute] = [int(attr_val)]
                 elif attr_val:
                     attr_dict[attribute] = attr_val
                 elif names.get('public_name', None):
@@ -1599,7 +1620,7 @@ class LDAPUserFolder(BasicUserFolder):
                 self._clearCaches()
 
                 msg = 'New user %s added' % user_dn
-            except Exception, e:
+            except Exception as e:
                 msg = str(e)
                 user_dn = ''
 
@@ -1719,7 +1740,7 @@ class LDAPUserFolder(BasicUserFolder):
                 group_dns.append(group)
 
         if self._local_groups:
-            if len(role_dns) == 0 and self._groups_store.has_key(user_dn):
+            if len(role_dns) == 0 and user_dn in self._groups_store:
                 del self._groups_store[user_dn]
             else:
                 self._groups_store[user_dn] = role_dns
@@ -1756,16 +1777,17 @@ class LDAPUserFolder(BasicUserFolder):
         schema = self.getSchemaConfig()
         prop_info = schema.get(prop_name, {})
         is_binary = prop_info.get('binary', None)
+        is_integer = prop_info.get('integer', None)
 
-        if isinstance(prop_value, basestring):
-            if is_binary:
+        if isinstance(prop_value, str):
+            if is_binary or is_integer:
                 prop_value = [prop_value]
             elif not prop_info.get('multivalued', ''):
                 prop_value = [prop_value.strip()]
             else:
                 prop_value = [x.strip() for x in prop_value.split(';')]
 
-        if not is_binary:
+        if not is_binary and not is_integer:
             for i in range(len(prop_value)):
                 prop_value[i] = to_utf8(prop_value[i])
 
@@ -1791,6 +1813,8 @@ class LDAPUserFolder(BasicUserFolder):
 
             if is_binary:
                 attrs = { '%s;binary' % prop_name : prop_value }
+            #elif is_integer:
+            #    attrs = { '%s;integer' % prop_name : prop_value }
             else:
                 attrs = { prop_name : prop_value }
 
@@ -1819,12 +1843,15 @@ class LDAPUserFolder(BasicUserFolder):
             source = REQUEST
 
         for attr, attr_info in schema.items():
-            if source.has_key(attr):
+            if attr in source:
                 new = source.get(attr, '')
-                if isinstance(new, basestring):
+                if isinstance(new, str):
                     if attr_info.get('binary', ''):
                         new = [new]
                         attr = '%s;binary' % attr
+                    #elif attr_info.get('integer', ''):
+                    #    new = [new]
+                    #    attr = '%s;integer' % attr
                     elif not attr_info.get('multivalued', ''):
                         new = [new.strip()]
                     else:
@@ -1898,7 +1925,7 @@ class LDAPUserFolder(BasicUserFolder):
         """ Purge user object from caches """
         user = user or ''
 
-        if not isinstance(user, basestring):
+        if not isinstance(user, (str, bytes)):
             user = user.getUserName()
 
         self._cache('anonymous').remove(user)
@@ -1910,7 +1937,7 @@ class LDAPUserFolder(BasicUserFolder):
         for name in (self._login_attr, self._uid_attr):
             negative_cache_key = '%s:%s:%s' % ( name
                                               , user
-                                              , sha_new('').hexdigest()
+                                              , sha_new(b'').hexdigest()
                                               )
             self._cache('negative').remove(negative_cache_key)
 
@@ -1999,7 +2026,7 @@ class LDAPUserFolder(BasicUserFolder):
     def getEncryptedBindPassword(self):
         """ Return a hashed bind password for safe use in forms etc.
         """
-        return sha_new(self.getProperty('_bindpwd')).hexdigest()
+        return sha_new(self.getProperty('_bindpwd').encode()).hexdigest()
 
 
 def manage_addLDAPUserFolder(self, delegate_type='LDAP delegate', REQUEST=None):

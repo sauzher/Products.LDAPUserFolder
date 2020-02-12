@@ -21,7 +21,6 @@ try:
     from hashlib import md5 as md5_new
 except ImportError:
     from md5 import new as md5_new
-from sets import Set
 
 from AccessControl import AuthEncoding
 
@@ -42,30 +41,22 @@ BINARY_ATTRIBUTES = ('objectguid', 'jpegphoto')
 
 HTTP_METHODS = ('GET', 'PUT', 'POST')
 
-GROUP_MEMBER_MAP = { 'groupOfUniqueNames' : 'uniqueMember'
-                   , 'groupOfNames' : 'member'
-                   , 'accessGroup' : 'member'
-                   , 'group' : 'member'
-                   , 'univentionGroup' : 'uniqueMember'
-                   }
+GROUP_MEMBER_MAP = {'groupOfUniqueNames': 'uniqueMember', 'groupOfNames': 'member', 'accessGroup': 'member', 'group': 'member', 'univentionGroup': 'uniqueMember'
+                    }
 
-GROUP_MEMBER_ATTRIBUTES = Set(list(GROUP_MEMBER_MAP.values()))
+GROUP_MEMBER_ATTRIBUTES = set(list(GROUP_MEMBER_MAP.values()))
 
-VALID_GROUP_ATTRIBUTES = Set([ 'name'
-                             , 'displayName'
-                             , 'cn'
-                             , 'dn'
-                             , 'objectGUID'
-                             , 'description'
-                             , 'mail'
-                             ]).union(GROUP_MEMBER_ATTRIBUTES)
+VALID_GROUP_ATTRIBUTES = set(['name', 'displayName', 'cn', 'dn', 'objectGUID', 'description', 'mail'
+                              ]).union(GROUP_MEMBER_ATTRIBUTES)
 
 encoding = 'utf-8'
 
+unicode = str
 
 #################################################
 # Helper methods for other modules
 #################################################
+
 
 def _verifyUnicode(st):
     """ Verify that the string is unicode """
@@ -73,9 +64,9 @@ def _verifyUnicode(st):
         return st
     else:
         try:
-            return unicode(st)
+            return st.decode()
         except UnicodeError:
-            return unicode(st, encoding)
+            return st.decode(encoding)
 
 
 def _createLDAPPassword(password, encoding='SHA'):
@@ -100,7 +91,7 @@ try:
     encodeLocal, decodeLocal, reader = codecs.lookup(encoding)[:3]
     encodeUTF8, decodeUTF8 = codecs.lookup('UTF-8')[:2]
 
-    if getattr(reader, '__module__', '')  == 'encodings.utf_8':
+    if getattr(reader, '__module__', '') == 'encodings.utf_8':
         # Everything stays UTF-8, so we can make this cheaper
         to_utf8 = from_utf8 = str
 
@@ -110,12 +101,12 @@ try:
             return encodeLocal(decodeUTF8(s)[0])[0]
 
         def to_utf8(s):
-            if isinstance(s, str):
+            if isinstance(s, bytes):
                 s = decodeLocal(s)[0]
             return encodeUTF8(s)[0]
 
 except LookupError:
-    raise LookupError, 'Unknown encoding "%s"' % encoding
+    raise LookupError('Unknown encoding "{}"'.format(encoding))
 
 
 def guid2string(val):
@@ -131,6 +122,7 @@ def guid2string(val):
 
 delegate_registry = {}
 
+
 def registerDelegate(name, klass, description=''):
     """ Register delegates that handle the LDAP-related work
 
@@ -138,14 +130,14 @@ def registerDelegate(name, klass, description=''):
     klass is a reference to the delegate class itself
     description is a more verbose delegate description
     """
-    delegate_registry[name] = { 'name'        : name
-                              , 'klass'       : klass
-                              , 'description' : description
-                              }
+    delegate_registry[name] = {'name': name, 'klass': klass, 'description': description
+                               }
+
 
 def registeredDelegates():
     """ Return the currently-registered delegates """
     return delegate_registry
+
 
 def _createDelegate(name='LDAP delegate'):
     """ Create a delegate based on the name passed in """

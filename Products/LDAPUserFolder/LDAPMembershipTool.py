@@ -31,8 +31,8 @@ class LDAPMembershipTool(MembershipTool):
     meta_type = 'LDAP Membership Tool'
     title = 'LDAP Membership Tool'
 
-
     security.declarePrivate('addMember')
+
     def addMember(self, id, password, roles, domains, properties=None):
         """ Adds a new member to the user folder.  Security checks will have
         already been performed.  Called by portal_registration.
@@ -42,17 +42,18 @@ class LDAPMembershipTool(MembershipTool):
         login_attribute = acl.getProperty('_login_attr')
         rdn_attribute = acl.getProperty('_rdnattr')
 
-        if ( rdn_attribute != login_attribute and 
-             rdn_attribute not in properties.keys() ):
-            raise ValueError, 'RDN attribute %s not provided.' % rdn_attribute
-        
+        if (rdn_attribute != login_attribute and
+                rdn_attribute not in properties.keys()):
+            raise ValueError(
+                'RDN attribute {} not provided.'.format(rdn_attribute))
+
         args['user_pw'] = args['confirm_pw'] = password
         args[login_attribute] = id
         args['user_roles'] = roles
 
         if rdn_attribute != login_attribute:
             args[rdn_attribute] = properties[rdn_attribute]
-        
+
         if properties.get('email', None):
             args['mail'] = properties['email']
 
@@ -69,6 +70,7 @@ class LDAPMembershipTool(MembershipTool):
             member.setMemberProperties(properties)
 
     security.declareProtected(ManageUsers, 'deleteMembers')
+
     def deleteMembers(self, member_ids, delete_memberareas=1,
                       delete_localroles=1):
         """ Delete members specified by member_ids.
@@ -77,7 +79,7 @@ class LDAPMembershipTool(MembershipTool):
         # Delete members in acl_users.
         acl_users = self.acl_users
         if _checkPermission(ManageUsers, acl_users):
-            if isinstance(member_ids, basestring):
+            if isinstance(member_ids, str):
                 member_ids = (member_ids,)
             member_ids = list(member_ids)
             member_dns = []
@@ -103,13 +105,13 @@ class LDAPMembershipTool(MembershipTool):
         # Delete members' home folders including all content items.
         if delete_memberareas:
             for member_id in member_ids:
-                 self.deleteMemberArea(member_id)
+                self.deleteMemberArea(member_id)
 
         # Delete members' local roles.
         if delete_localroles:
             utool = getToolByName(self, 'portal_url', None)
-            self.deleteLocalRoles( utool.getPortalObject(), member_ids,
-                                   reindex=1, recursive=1 ) 
+            self.deleteLocalRoles(utool.getPortalObject(), member_ids,
+                                  reindex=1, recursive=1)
 
         return tuple(member_ids)
 

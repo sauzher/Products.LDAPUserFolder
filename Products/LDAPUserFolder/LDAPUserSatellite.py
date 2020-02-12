@@ -18,7 +18,6 @@ $Id$
 # General Python imports
 import logging
 import os
-from sets import Set
 import time
 import urllib
 
@@ -47,7 +46,7 @@ logger = logging.getLogger('event.LDAPUserSatellite')
 
 
 class LDAPUserSatellite(SimpleItem):
-    """ 
+    """
         LDAPUserSatellite
 
         The LDAPUserSatellite is used to compute additional roles
@@ -58,31 +57,29 @@ class LDAPUserSatellite(SimpleItem):
     meta_type = 'LDAPUserSatellite'
     id = 'acl_satellite'
 
-
     #################################################################
     #
     # ZMI management screens
     #
     #################################################################
 
-    manage_options=(
+    manage_options = (
         (
-        {'label' : 'Configure',	'action' : 'manage_main', 
-         'help'  : ('LDAPUserFolder','ConfigureSatellite.stx')},
-        {'label' : 'Caches', 'action' : 'manage_cache',
-         'help'  : ('LDAPUserFolder', 'CachesSatellite.stx')},
+            {'label': 'Configure', 'action': 'manage_main',
+             'help': ('LDAPUserFolder', 'ConfigureSatellite.stx')},
+            {'label': 'Caches', 'action': 'manage_cache',
+             'help': ('LDAPUserFolder', 'CachesSatellite.stx')},
         )
         + SimpleItem.manage_options
-        ) 
+    )
 
     security.declareProtected(view_management_screens, 'manage')
     security.declareProtected(view_management_screens, 'manage_main')
     manage = manage_main = DTMLFile('dtml/sat_properties', globals())
     manage_main._setName('manage_main')
-    
+
     security.declareProtected(view_management_screens, 'manage_cache')
     manage_cache = DTMLFile('dtml/sat_cache', globals())
-
 
     #################################################################
     # Initialization code
@@ -103,7 +100,6 @@ class LDAPUserSatellite(SimpleItem):
         if getattr(self, '_logger', None) is not None:
             del self._logger
 
-
     def __init__(self, luf, title='', recurse=0):
         """ Create a new LDAPUserSatellite instance """
         self._hash = '%s%s' % (self.meta_type, str(time.time()))
@@ -114,15 +110,16 @@ class LDAPUserSatellite(SimpleItem):
         self.groups_scope = ''
         self.groups_map = {}
 
-       
     security.declarePrivate('_clearCaches')
+
     def _clearCaches(self):
         """ Clear all logs and caches for user-related information """
         self._cache('users').clear() # Cache for user ID - role mapping
-        self._cache('expiration').clear() # Cache user ID - expiration mapping
-
+        # Cache user ID - expiration mapping
+        self._cache('expiration').clear()
 
     security.declareProtected(manage_users, 'manage_reinit')
+
     def manage_reinit(self, REQUEST=None):
         """ re-initialize and clear out users and log """
         self._clearCaches()
@@ -132,16 +129,10 @@ class LDAPUserSatellite(SimpleItem):
             msg = 'User caches cleared'
             return self.manage_cache(manage_tabs_message=msg)
 
-
     security.declareProtected(CHANGE_LUF_PERMISSION, 'manage_edit')
-    def manage_edit( self
-                   , luf
-                   , groups_base
-                   , groups_scope
-                   , title=''
-                   , recurse=0
-                   , REQUEST=None 
-                   ):
+
+    def manage_edit(self, luf, groups_base, groups_scope, title='', recurse=0, REQUEST=None
+                    ):
         """ Edit the LDAPUserSatellite Object """
         self.title = title
         self.recurse = recurse
@@ -159,8 +150,8 @@ class LDAPUserSatellite(SimpleItem):
             msg = 'Properties changed'
             return self.manage_main(manage_tabs_message=msg)
 
-
     security.declarePrivate('_cacheRoles')
+
     def _cacheRoles(self, name, roles=[], expiration=0):
         """ Stick something into my internal cache """
         if not name or not roles:
@@ -171,16 +162,16 @@ class LDAPUserSatellite(SimpleItem):
             self._cache('users')[name] = roles
             self._cache('expiration')[name] = expiration
 
-
     security.declareProtected(manage_users, 'getExpiration')
+
     def getExpiration(self, name):
         """ Retrieve a user record's expiration """
         name = name.lower()
 
         return DateTime(self._cache('expiration').get(name, 0))
 
-
     security.declarePrivate('getAdditionalRoles')
+
     def getAdditionalRoles(self, user, already_added=()):
         """ extend the user roles """
         my_path = self.absolute_url(1)
@@ -195,7 +186,8 @@ class LDAPUserSatellite(SimpleItem):
 
             for sat in other_satellites:
                 if sat.getPhysicalPath() != self_path:
-                    add_role_list = sat.getAdditionalRoles(user, already_added)
+                    add_role_list = sat.getAdditionalRoles(
+                        user, already_added)
                     newly_added = {}
 
                     for add_role in add_role_list:
@@ -208,25 +200,23 @@ class LDAPUserSatellite(SimpleItem):
 
         luf = self.getLUF()
         user_id = user.getId()
-        user_expiration = user._created + luf.getCacheTimeout('authenticated')
+        user_expiration = user._created + \
+            luf.getCacheTimeout('authenticated')
 
-        if ( self._cache('users').has_key(user_id) and
-             self._cache('expiration').get(user_id, 0) >= user_expiration ):
+        if (user_id in self._cache('users') and
+                self._cache('expiration').get(user_id, 0) >= user_expiration):
             logger.debug('Used cached user "%s"' % user_id)
             return self._cache('users').get(user_id)
 
         if self.groups_base:   # We were given a search base, so search there
             user_dn = user.getUserDN()
-            member_attrs = list(Set(GROUP_MEMBER_MAP.values()))
-            filt_list = [ filter_format('(%s=%s)', (m_attr, user_dn))
-                                        for m_attr in member_attrs ]
+            member_attrs = list(set(GROUP_MEMBER_MAP.values()))
+            filt_list = [filter_format('(%s=%s)', (m_attr, user_dn))
+                         for m_attr in member_attrs]
             group_filter = '(|%s)' % ''.join(filt_list)
 
-            res = luf._delegate.search( self.groups_base
-                                      , self.groups_scope
-                                      , group_filter
-                                      , attrs = ['dn', 'cn']
-                                      )
+            res = luf._delegate.search(self.groups_base, self.groups_scope, group_filter, attrs=['dn', 'cn']
+                                       )
 
             if res['size'] > 0:
                 resultset = res['results']
@@ -259,25 +249,27 @@ class LDAPUserSatellite(SimpleItem):
 
         if added_roles:
             add_roles = ', '.join(added_roles)
-            logger.debug('Added roles "%s" to user "%s"' % (add_roles, user_id))
+            logger.debug('Added roles "%s" to user "%s"' %
+                         (add_roles, user_id))
 
         self._cacheRoles(user_id, added_roles, user_expiration)
 
         return added_roles
 
-
     security.declareProtected(manage_users, 'getLUF')
+
     def getLUF(self):
         """ Return my LDAP User Folder """
         return self.unrestrictedTraverse(self._luf)
 
-
     security.declareProtected(manage_users, 'getCache')
+
     def getCache(self):
         """ Return a list of *cached* user objects """
         return self._cache('users').items()
 
-    security.declareProtected( manage_users, 'getGroups' )
+    security.declareProtected(manage_users, 'getGroups')
+
     def getAllGroups(self):
         """
             returns a list of possible groups from the ldap tree.
@@ -293,8 +285,8 @@ class LDAPUserSatellite(SimpleItem):
 
         return tuple(groups_dict.keys())
 
-
     security.declareProtected(manage_users, 'getGroups')
+
     def getGroups(self, dn='*', attr=None):
         """ return group records i know about """
         group_list = []
@@ -304,21 +296,18 @@ class LDAPUserSatellite(SimpleItem):
 
             if dn == '*':
                 group_classes = GROUP_MEMBER_MAP.keys()
-                filt_list = [ filter_format('(%s=%s)', ('objectClass', g))
-                                        for g in group_classes ]
+                filt_list = [filter_format('(%s=%s)', ('objectClass', g))
+                             for g in group_classes]
                 group_filter = '(|%s)' % ''.join(filt_list)
             else:
-                member_attrs = list(Set(GROUP_MEMBER_MAP.values()))
-                filt_list = [ filter_format('(%s=%s)', (m_attr, dn))
-                                            for m_attr in member_attrs ]
+                member_attrs = list(set(GROUP_MEMBER_MAP.values()))
+                filt_list = [filter_format('(%s=%s)', (m_attr, dn))
+                             for m_attr in member_attrs]
                 group_filter = '(|%s)' % ''.join(filt_list)
             luf = self.getLUF()
 
-            res = luf._delegate.search( self.groups_base
-                                      , self.groups_scope
-                                      , group_filter
-                                      , attrs=['dn', 'cn']
-                                      )
+            res = luf._delegate.search(self.groups_base, self.groups_scope, group_filter, attrs=['dn', 'cn']
+                                       )
 
             if res['size'] > 0:
                 resultset = res['results']
@@ -339,17 +328,15 @@ class LDAPUserSatellite(SimpleItem):
         return group_list
 
     security.declareProtected(manage_users, 'getGroupDetails')
+
     def getGroupDetails(self, encoded_cn):
         """ Return all group details """
         result = []
-        cn = urllib.unquote(encoded_cn)
+        cn = urllib.parse.unquote(encoded_cn)
         luf = self.getLUF()
 
-        res = luf._delegate.search( self.groups_base
-                                  , self.groups_scope
-                                  , '(cn=%s)' % cn
-                                  , list(Set(GROUP_MEMBER_MAP.values()))
-                                  )
+        res = luf._delegate.search(self.groups_base, self.groups_scope, '(cn=%s)' % cn, list(set(GROUP_MEMBER_MAP.values()))
+                                   )
 
         if res['exception']:
             result = (('Exception', res['exception']),)
@@ -359,14 +346,14 @@ class LDAPUserSatellite(SimpleItem):
 
         return tuple(result)
 
-
     security.declareProtected(manage_users, 'getGroupedUsers')
+
     def getGroupedUsers(self, groups=None):
         """ Retrieve all users that in the groups i know about """
         all_dns = {}
         users = []
         luf = self.getLUF()
-        possible_members = list(Set(GROUP_MEMBER_MAP.values()))
+        possible_members = list(set(GROUP_MEMBER_MAP.values()))
 
         if groups is None:
             groups = self.getGroups()
@@ -387,8 +374,8 @@ class LDAPUserSatellite(SimpleItem):
 
         return tuple(users)
 
-
     security.declareProtected(manage_users, 'manage_editUserRoles')
+
     def manage_editUserRoles(self, user_dn, role_dns=[], REQUEST=None):
         """ Edit the roles (groups) of a user """
         all_groups = self.getGroups(attr='dn')
@@ -406,36 +393,27 @@ class LDAPUserSatellite(SimpleItem):
                 newgroup_member = GROUP_MEMBER_MAP.get(newgroup_type)
                 newgroup_name = luf._delegate.explode_dn(role_dn, 1)[0]
                 connection = luf._connect()
-                attr_list = [ ('objectClass', ['top', newgroup_type])
-                            , ('cn', newgroup_name)
-                            , (newgroup_member, [user_dn, luf._binduid])
-                            ]
+                attr_list = [('objectClass', ['top', newgroup_type]), ('cn', newgroup_name), (newgroup_member, [user_dn, luf._binduid])
+                             ]
                 connection.add_s(role_dn, attr_list)
-
 
         for group in all_groups:
             if group in cur_groups and group not in role_dns:
-                operations.append({ 'op'     : luf._delegate.DELETE
-                                  , 'target' : group
-                                  , 'type'   : luf.getGroupType(group)
-                                  } )
+                operations.append({'op': luf._delegate.DELETE, 'target': group, 'type': luf.getGroupType(group)
+                                   })
             elif group in role_dns and group not in cur_groups:
-                operations.append({ 'op'     : luf._delegate.ADD
-                                  , 'target' : group
-                                  , 'type'   : luf.getGroupType(group)
-                                  } )
+                operations.append({'op': luf._delegate.ADD, 'target': group, 'type': luf.getGroupType(group)
+                                   })
 
         if operations:
             connection = luf._connect()
 
             for to_do in operations:
-                mod_list = ( ( to_do['op']
-                             , GROUP_MEMBER_MAP.get(to_do['type'])
-                             , user_dn
+                mod_list = ((to_do['op'], GROUP_MEMBER_MAP.get(to_do['type']), user_dn
                              ), )
                 try:
                     connection.modify_s(to_do['target'], mod_list)
-                except Exception, e:
+                except Exception as e:
                     msg = str(e)
 
             msg = 'Roles changed for %s' % (user_dn)
@@ -447,30 +425,29 @@ class LDAPUserSatellite(SimpleItem):
             self._expireUser(user_obj)
 
         if REQUEST:
-            return self.manage_userrecords( manage_tabs_message=msg
-                                          , user_dn=user_dn
-                                          )
-
+            return self.manage_userrecords(manage_tabs_message=msg, user_dn=user_dn
+                                           )
 
     security.declareProtected(manage_users, '_expireUser')
+
     def _expireUser(self, user_obj):
         """ Purge user object from caches """
         name = user_obj.getId().lower()
 
-        if self._cache('users').has_key(name):
+        if name in self._cache('users'):
             del self._cache('users')[name]
 
-        if self._cache('expiration').has_key(name):
+        if name in self._cache('expiration'):
             del self._cache('expiration')[name]
 
-
     security.declareProtected(manage_users, 'getGroupMappings')
+
     def getGroupMappings(self):
         """ Return the dictionary that maps LDAP groups map to Zope roles """
         return self.groups_map.items()
 
-
     security.declareProtected(manage_users, 'manage_addGroupMapping')
+
     def manage_addGroupMapping(self, group_name, role_names=[], REQUEST=None):
         """ Map a LDAP group to a Zope role """
         if len(role_names) < 1:
@@ -483,19 +460,19 @@ class LDAPUserSatellite(SimpleItem):
             self._clearCaches()
 
             msg = 'Added LDAP group to Zope role mapping: %s -> %s' % (
-                    group_name, ', '.join(role_names))
+                group_name, ', '.join(role_names))
 
         if REQUEST:
             return self.manage_main(manage_tabs_message=msg)
 
+    security.declareProtected(manage_users, 'manage_deleteGroupMappings')
 
-    security.declareProtected(manage_users, 'manage_deleteGroupMappings') 
     def manage_deleteGroupMappings(self, group_names, REQUEST=None):
         """ Delete mappings from LDAP group to Zope role """
         mappings = self.groups_map
 
         for group_name in group_names:
-            if mappings.has_key(group_name):
+            if group_name in mappings:
                 del mappings[group_name]
 
         self.groups_map = mappings
@@ -506,16 +483,12 @@ class LDAPUserSatellite(SimpleItem):
         if REQUEST:
             return self.manage_main(manage_tabs_message=msg)
 
-
     security.declarePrivate('_cache')
+
     def _cache(self, cache_type='users'):
         """ Get the specified user cache """
-        return getResource( '%s-%scache' % (self._hash, cache_type)
-                          , dict
-                          , ()
-                          )
-
-
+        return getResource('%s-%scache' % (self._hash, cache_type), dict, ()
+                           )
 
 
 def manage_addLDAPUserSatellite(self, luf, title='', recurse=0, REQUEST=None):
@@ -523,16 +496,16 @@ def manage_addLDAPUserSatellite(self, luf, title='', recurse=0, REQUEST=None):
 
     if hasattr(aq_base(self), 'acl_satellite') and REQUEST is not None:
         msg = 'This object already contains a LDAPUserSatellite'
-        
+
         return MessageDialog(
-               title  = 'Item Exists',
-               message = msg,
-               action = '%s/manage_main' % REQUEST['URL1'])
+            title='Item Exists',
+            message=msg,
+            action='%s/manage_main' % REQUEST['URL1'])
 
     n = LDAPUserSatellite(luf, title, recurse)
 
     self._setObject('acl_satellite', n)
- 
+
     # return to the parent object's manage_main
     if REQUEST:
         url = '%s/acl_satellite/manage_main' % self.this().absolute_url()

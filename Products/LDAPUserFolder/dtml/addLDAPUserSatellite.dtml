@@ -28,7 +28,7 @@
         <td align="left" valign="top" class="form-element">
           <select name="luf">
             <dtml-in lufs>
-              <dtml-let luf_path="_.string.join( getPhysicalPath(), '/' )">
+              <dtml-let luf_path="'/'.join( getPhysicalPath())">
                 <option value="&dtml-luf_path;">
                   &dtml-luf_path; (&dtml-meta_type;)
                 </option>
@@ -45,7 +45,7 @@
           <input type="submit" value=" Add ">
         </td>
       </tr>
-    
+
     </table>
     </form>
 

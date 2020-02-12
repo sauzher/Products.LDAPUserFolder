@@ -5,7 +5,7 @@
 </dtml-with>
 
 <script type="text/javascript">
-<!-- 
+<!--
 
 isSelected = false;
 
@@ -22,7 +22,7 @@ function toggleSelect() {
       document.objectItems.elements[i].checked = false ;
       isSelected = false;
       document.objectItems.selectButton.value = "Select All";
-      return isSelected;       
+      return isSelected;
   }
 }
 
@@ -35,7 +35,7 @@ function toggleSelect() {
   <dtml-in expr="findUser( search_param=search_param
                          , search_term=search_term
                          , exact_match=exact_match
-                         )" 
+                         )"
            mapping sort="sn">
     <dtml-if name="sequence-start">
       <dtml-if expr="_['sequence-length'] > 15">
@@ -71,7 +71,7 @@ function toggleSelect() {
               </select>
             </td>
             <td>
-              <input type="submit" name="find_button_pressed" 
+              <input type="submit" name="find_button_pressed"
                      value=" Search! ">
             </td>
           </tr>
@@ -110,11 +110,11 @@ function toggleSelect() {
         <tr>
           <td align="left" valign="top" width="16">&nbsp;</td>
           <td align="left" valign="top" colspan="3" class="form-element">
-            <input class="form-element" type="submit" 
+            <input class="form-element" type="submit"
                    name="manage_deleteUsers:method"
                    value="Delete" />
             <script type="text/javascript">
-            <!-- 
+            <!--
               if (document.forms[0]) {
               document.write('<input class="form-element" type="submit" name="selectButton" value="Select All" onClick="toggleSelect(); return false">')
               }
@@ -168,7 +168,7 @@ function toggleSelect() {
         </select>
       </td>
       <td>
-        <input type="submit" name="find_button_pressed" 
+        <input type="submit" name="find_button_pressed"
                value=" Search! ">
       </td>
     </tr>
@@ -180,7 +180,7 @@ function toggleSelect() {
   <p class="form-help">
     Edit the details for user &dtml-user_dn;:<br />
     <i>
-      To enter multiple values for attributes designated as multivalue in the 
+      To enter multiple values for attributes designated as multivalue in the
       LDAP Schema configuration separate the values with a semicolon (;).
     </i>
   </p>
@@ -197,8 +197,8 @@ function toggleSelect() {
         </tr>
         <tr>
           <td class="form-text"> Distinguished Name (DN) </td>
-          <td class="form-text"> 
-            <dtml-var "cur_vals.get('dn', '(n/a)')"> 
+          <td class="form-text">
+            <dtml-var "cur_vals.get('dn', '(n/a)')">
           </td>
         </tr>
         <tr>
@@ -212,7 +212,9 @@ function toggleSelect() {
     <dtml-let sk="_['sequence-key']"
               si="_['sequence-item']"
               cur_val="cur_vals.get( sk, '' )"
-              binaries="getBinaryUserAttrs()">
+              binaries="getBinaryUserAttrs()"
+              integers="getIntegerUserAttrs()"
+              >
       <dtml-if expr="sk not in ('userPassword', 'dn')">
         <tr>
           <td class="form-text"> &dtml-si; (&dtml-sk;) </td>
@@ -220,7 +222,7 @@ function toggleSelect() {
             <dtml-if expr="sk in binaries">
               <span class="form-text"> n/a (binary value) </span>
             <dtml-else>
-              <input type="text" size="50" name="&dtml-sk;" 
+              <input type="text" size="50" name="&dtml-sk;"
                  value="<dtml-var "cur_val and ';'.join(cur_val) or ''">" />
             </dtml-if>
           </td>
@@ -261,7 +263,7 @@ function toggleSelect() {
   <input type="hidden" name="user_dn" value="&dtml-user_dn;">
   <dtml-let cur_roles="getGroups(dn=user_dn, attr='dn')">
   <dtml-in expr="getGroups()"><div class="form-text">
-    <input type="checkbox" name="role_dns:list" value="&dtml-sequence-item;" 
+    <input type="checkbox" name="role_dns:list" value="&dtml-sequence-item;"
       <dtml-if expr="_['sequence-item'] in cur_roles">checked</dtml-if>>
     &dtml-sequence-key; (&dtml-sequence-item;)</div>
   </dtml-in>
@@ -296,8 +298,8 @@ function toggleSelect() {
 
   <table border="0" cellpadding="2" cellspacing="0" width="98%">
     <tr class="section-bar">
-      <td class="form-label"> 
-        Search Again 
+      <td class="form-label">
+        Search Again
       </td>
     </tr>
   </table>
@@ -379,7 +381,7 @@ function toggleSelect() {
     <dtml-if "local_users and getProperty('_local_groups')">
 
       <p>&nbsp;</p>
-  
+
       <form action="&dtml-URL1;" method="post" name="objectItems">
 
         <table cellspacing="0" cellpadding="3" width="98%">
@@ -409,7 +411,7 @@ function toggleSelect() {
                   </a>
                 </td>
                 <td class="list-item">
-                  <dtml-var expr="_.string.join(si, ', ')">
+                  <dtml-var expr="', '.join(si)">
                 </td>
               </tr>
 
@@ -434,9 +436,9 @@ function toggleSelect() {
           </tr>
 
         </table>
-  
+
       </form>
-  
+
     </dtml-if>
 
   </dtml-let>
@@ -454,14 +456,14 @@ function toggleSelect() {
       </tr>
       <tr>
         <td colspan="2" class="form-help">
-          The user record will be created on the branch you designated 
-          as the users search base on the configuration screen. 
-          The user attributes on this form depend on the list of 
-          attributes you specified under "LDAP user attributes" on the same 
-          configuration screen.<br /> 
+          The user record will be created on the branch you designated
+          as the users search base on the configuration screen.
+          The user attributes on this form depend on the list of
+          attributes you specified under "LDAP user attributes" on the same
+          configuration screen.<br />
           <i>
-            To enter multiple values for attributes designated as multivalue in 
-            the LDAP Schema configuration separate the values with a 
+            To enter multiple values for attributes designated as multivalue in
+            the LDAP Schema configuration separate the values with a
             semicolon (;).
           </i>
         </td>
@@ -486,7 +488,7 @@ function toggleSelect() {
           <input type="password" name="user_pw" size="50">
         </td>
       </tr>
-      
+
       <tr>
         <td align="left" valign="top" class="form-label">
           Confirm Password
@@ -495,28 +497,28 @@ function toggleSelect() {
           <input type="password" name="confirm_pw" size="50">
         </td>
       </tr>
-      
+
       <tr>
         <td align="left" valign="top" class="form-label">
           Roles
         </td>
         <td align="left" valign="top">
           <dtml-in expr="getGroups()"><div class="form-text">
-            <input type="checkbox" name="user_roles:list" 
+            <input type="checkbox" name="user_roles:list"
                 value="&dtml-sequence-item;" />
               &dtml-sequence-key;</div>
           </dtml-in>
         </td>
       </tr>
-      
+
       <tr> <td colspan="2">&nbsp;</td> </tr>
-      
+
       <tr>
         <td colspan="2">
           <input type="submit" value=" Add User ">
         </td>
       </tr>
-      
+
     </table>
     </form>
   </dtml-if>

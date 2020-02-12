@@ -52,7 +52,7 @@
       &dtml-sequence-key;
     </td>
     <td valign="top" class="form-text">
-      <dtml-var expr="_.string.join(_['sequence-item'], ', ')">
+      <dtml-var expr="', '.join(_['sequence-item'])">
     </td>
     <td valign="top" class="form-text">
       <dtml-var expr="getExpiration(_['sequence-key'])" fmt="Time">
