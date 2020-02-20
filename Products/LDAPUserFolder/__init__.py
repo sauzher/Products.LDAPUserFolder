@@ -11,32 +11,20 @@
 #
 ##############################################################################
 """ LDAPUserFolder package initialization code
-
-$Id$
 """
 
 from AccessControl.Permissions import add_user_folders
 
 from Products.LDAPUserFolder.LDAPUserFolder import LDAPUserFolder
 from Products.LDAPUserFolder.LDAPUserFolder import manage_addLDAPUserFolder
-from Products.LDAPUserFolder.LDAPUserSatellite import addLDAPUserSatelliteForm
-from Products.LDAPUserFolder.LDAPUserSatellite import manage_addLDAPUserSatellite
-from Products.LDAPUserFolder.LDAPUserSatellite import LDAPUserSatellite 
+
 
 def initialize(context):
-    context.registerClass( LDAPUserFolder
-                         , permission=add_user_folders
-                         , constructors=(manage_addLDAPUserFolder,)
-                         , icon='www/ldapuserfolder.gif'
-                         )
+    context.registerClass(LDAPUserFolder, permission=add_user_folders,
+                          constructors=(manage_addLDAPUserFolder,),
+                          icon='www/ldapuserfolder.gif')
 
-    context.registerClass( LDAPUserSatellite
-                         , permission=add_user_folders
-                         , constructors=( addLDAPUserSatelliteForm
-                                        , manage_addLDAPUserSatellite
-                                        )
-                         , icon='www/ldapusersatellite.gif'
-                         )
+    # make sure the default LDAPDelegate class is registered
+    from Products.LDAPUserFolder import LDAPDelegate  # noqa: F401
 
     context.registerHelp()
-

@@ -11,24 +11,26 @@
 #
 ##############################################################################
 """ LDAPUserFolder GenericSetup support
-
-$Id$
 """
 
 from Acquisition import aq_base
 from BTrees.OOBTree import OOBTree
-from ZPublisher.HTTPRequest import default_encoding
-from zope.component import adapts
-
 from Products.GenericSetup.interfaces import ISetupEnviron
+from Products.GenericSetup.utils import XMLAdapterBase
 from Products.GenericSetup.utils import exportObjects
 from Products.GenericSetup.utils import importObjects
-from Products.GenericSetup.utils import XMLAdapterBase
+from zope.component import adapts
+from ZPublisher.HTTPRequest import default_encoding
 
-from Products.LDAPUserFolder.interfaces import ILDAPUserFolder
+from .interfaces import ILDAPUserFolder
 
-PROPERTIES = ('title', '_login_attr', '_uid_attr', 'users_base', 'users_scope', '_roles', 'groups_base', 'groups_scope', '_binduid', '_bindpwd', '_binduid_usage', '_rdnattr', '_user_objclasses', '_local_groups', '_implicit_mapping', '_pwd_encryption', 'read_only', '_extra_user_filter', '_anonymous_timeout', '_authenticated_timeout'
-              )
+
+PROPERTIES = ('title', '_login_attr', '_uid_attr', 'users_base',
+              'users_scope', '_roles',  'groups_base', 'groups_scope',
+              '_binduid', '_bindpwd', '_binduid_usage', '_rdnattr',
+              '_user_objclasses', '_local_groups', '_implicit_mapping',
+              '_pwd_encryption', 'read_only', '_extra_user_filter',
+              '_anonymous_timeout', '_authenticated_timeout')
 
 
 class LDAPUserFolderXMLAdapter(XMLAdapterBase):
@@ -151,9 +153,9 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
                 child = self._doc.createElement('user')
                 child.setAttribute('dn', user_dn)
                 for role_dn in role_dns:
-                    grandchild = self._doc.createElement('element')
-                    grandchild.setAttribute('value', role_dn)
-                    child.appendChild(grandchild)
+                    gchild = self._doc.createElement('element')
+                    gchild.setAttribute('value', role_dn)
+                    child.appendChild(gchild)
                 node.appendChild(child)
             fragment.appendChild(node)
 
@@ -184,7 +186,8 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
         fragment = self._doc.createDocumentFragment()
         node = self._doc.createElement('ldap-schema')
         schema_config = self.context.getSchemaConfig()
-        for schema_info in schema_config.values():
+        for schema_info in sorted(schema_config.values(),
+                                  key=lambda x: x['ldap_name']):
             child = self._doc.createElement('schema-item')
             for key, value in schema_info.items():
                 if isinstance(value, (int, bool)):
@@ -243,8 +246,9 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
 
         value_nodes = [x for x in child.childNodes if
                        x.nodeType == child.ELEMENT_NODE]
-        self.context._additional_groups = self._readSequenceValue(
-            value_nodes)
+
+        self.context._additional_groups = self._readSequenceValue(value_nodes)
+
 
     def _initGroupMap(self, node):
         """ Initialize LDAP group to Zope role mapping
@@ -256,14 +260,13 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
             if child.nodeName != 'group-map':
                 continue
 
-            for grandchild in child.childNodes:
-                if grandchild.nodeName != 'mapped-group':
+            for gchild in child.childNodes:
+                if gchild.nodeName != 'mapped-group':
                     continue
 
-                key = grandchild.getAttribute('ldap_group')
-                value = grandchild.getAttribute('zope_role')
-                group_map[key.encode(self._encoding)] = value.encode(
-                    self._encoding)
+                key = gchild.getAttribute('ldap_group').encode(self._encoding)
+                value = gchild.getAttribute('zope_role').encode(self._encoding)
+                group_map[key] = value
 
         self.context._groups_mappings = group_map
 
@@ -277,13 +280,12 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
             if child.nodeName != 'group-users':
                 continue
 
-            for grandchild in child.childNodes:
-                if grandchild.nodeName != 'user':
+            for gchild in child.childNodes:
+                if gchild.nodeName != 'user':
                     continue
 
-                user_dn = grandchild.getAttribute(
-                    'dn').encode(self._encoding)
-                values = [x for x in grandchild.childNodes if
+                user_dn = gchild.getAttribute('dn').encode(self._encoding)
+                values = [x for x in gchild.childNodes if
                           x.nodeType == child.ELEMENT_NODE]
                 role_dns = self._readSequenceValue(values)
                 groups_store[user_dn] = role_dns
@@ -302,27 +304,30 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
                 server_count = len(self.context.getServers())
                 self.context.manage_deleteServers(range(0, server_count))
 
-            for grandchild in child.childNodes:
-                if grandchild.nodeName != 'ldap-server':
+            for gchild in child.childNodes:
+                if gchild.nodeName != 'ldap-server':
                     continue
 
-                if grandchild.getAttribute('protocol').lower() == u'ldaps':
+                if gchild.getAttribute('protocol').lower() == u'ldaps':
                     use_ssl = 1
-                elif grandchild.getAttribute('protocol').lower() == u'ldapi':
+                elif gchild.getAttribute('protocol').lower() == u'ldapi':
                     use_ssl = 2
                 else:
                     use_ssl = 0
-                port = grandchild.getAttribute('port')
+                port = gchild.getAttribute('port')
                 if port:
                     port = int(port)
                 self.context.manage_addServer(
-                    grandchild.getAttribute('host').encode(self._encoding), port=port, use_ssl=use_ssl, conn_timeout=int(grandchild.getAttribute('conn_timeout')), op_timeout=int(grandchild.getAttribute('op_timeout'))
-                )
+                    gchild.getAttribute('host').encode(self._encoding),
+                    port=port, use_ssl=use_ssl,
+                    conn_timeout=int(gchild.getAttribute('conn_timeout')),
+                    op_timeout=int(gchild.getAttribute('op_timeout')))
 
     def _initLDAPSchema(self, node):
         """ Initialize LDAP schema information
         """
-        # ldap-schema/schema-item/friendly_name/ldap_name/multivalued/binary/integer/public_name
+        # ldap-schema/schema-item/friendly_name/ldap_name/
+        # multivalued/binary/public_name
         for child in node.childNodes:
             if child.nodeName != 'ldap-schema':
                 continue
@@ -330,12 +335,13 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
             if child.getAttribute('purge').lower() == 'true':
                 self.context._ldapschema = {}
 
-            for grandchild in child.childNodes:
-                if grandchild.nodeName != 'schema-item':
+            for gchild in child.childNodes:
+                if gchild.nodeName != 'schema-item':
                     continue
 
-                def get(n): return grandchild.getAttribute(
-                    n).encode(self._encoding)
+                def get(name):
+                    attr = gchild.getAttribute(name)
+                    return attr.encode(self._encoding)
 
                 ldap_name = get('ldap_name')
                 item = self.context._ldapschema.setdefault(ldap_name, {})
@@ -345,6 +351,7 @@ class LDAPUserFolderXMLAdapter(XMLAdapterBase):
                 item['friendly_name'] = get('friendly_name')
                 item['multivalued'] = get(
                     'multivalued').lower() in ('true', 'yes')
+
                 item['public_name'] = get('public_name')
                 item['ldap_name'] = ldap_name
 
@@ -374,4 +381,3 @@ def exportLDAPUserFolder(context):
         exportObjects(uf, '', context)
     else:
         context.getLogger('ldapuserfolder').debug('Nothing to export.')
-

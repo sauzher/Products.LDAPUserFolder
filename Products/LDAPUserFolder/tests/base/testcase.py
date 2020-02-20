@@ -11,34 +11,30 @@
 #
 ##############################################################################
 """ A test case class for LDAPUserFolder tests
-
-$Id: __init__.py 58 2008-05-28 21:33:24Z jens $
 """
 
-# General Python imports
-import unittest, sys
-
-# Zope imports
-from OFS.Folder import Folder
-from Testing import ZopeTestCase
-import transaction
+import unittest
 
 from dataflake.fakeldap import FakeLDAPConnection
-from Products.LDAPUserFolder import LDAPDelegate
+
+import transaction
+from OFS.Folder import Folder
+from Testing import ZopeTestCase
+
+from ... import LDAPDelegate
+from ...LDAPUserFolder import manage_addLDAPUserFolder
+from ..config import alternates
+from ..config import defaults
+from ..config import user
+from ..config import user2
+
+
 LDAPDelegate.c_factory = FakeLDAPConnection
-
-# LDAPUserFolder package imports
-from Products.LDAPUserFolder import manage_addLDAPUserFolder
-
-# Tests imports
-from Products.LDAPUserFolder.tests.config import defaults
-from Products.LDAPUserFolder.tests.config import alternates
-from Products.LDAPUserFolder.tests.config import user
-from Products.LDAPUserFolder.tests.config import user2
 dg = defaults.get
 ag = alternates.get
 ug = user.get
 u2g = user2.get
+
 
 class LDAPTest(unittest.TestCase):
 
@@ -54,27 +50,17 @@ class LDAPTest(unittest.TestCase):
         luf = self.folder.acl_users
         host, port = dg('server').split(':')
         luf.manage_addServer(host, port=port)
-        luf.manage_edit( dg('title')
-                       , dg('login_attr')
-                       , dg('uid_attr')
-                       , dg('users_base')
-                       , dg('users_scope')
-                       , dg('roles')
-                       , dg('groups_base')
-                       , dg('groups_scope')
-                       , dg('binduid')
-                       , dg('bindpwd')
-                       , binduid_usage = dg('binduid_usage')
-                       , rdn_attr = dg('rdn_attr')
-                       , local_groups = dg('local_groups')
-                       , implicit_mapping = dg('implicit_mapping')
-                       , encryption = dg('encryption')
-                       , read_only = dg('read_only')
-                       )
+        luf.manage_edit(dg('title'), dg('login_attr'), dg('uid_attr'),
+                        dg('users_base'), dg('users_scope'), dg('roles'),
+                        dg('groups_base'), dg('groups_scope'), dg('binduid'),
+                        dg('bindpwd'), binduid_usage=dg('binduid_usage'),
+                        rdn_attr=dg('rdn_attr'),
+                        local_groups=dg('local_groups'),
+                        implicit_mapping=dg('implicit_mapping'),
+                        encryption=dg('encryption'), read_only=dg('read_only'))
         self.db.addTreeItems(dg('users_base'))
         self.db.addTreeItems(dg('groups_base'))
 
-    def tearDown( self ):
+    def tearDown(self):
         transaction.abort()
         ZopeTestCase.close(self.app)
-

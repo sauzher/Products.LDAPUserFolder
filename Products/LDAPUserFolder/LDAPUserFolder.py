@@ -11,58 +11,49 @@
 #
 ##############################################################################
 """ The LDAPUserFolder class
-
-$Id$
 """
 
-# General python imports
 import logging
 import os
 import random
-try:
-    from hashlib import sha1 as sha_new
-except ImportError:
-    from sha import new as sha_new
-import time
-import urllib
 
-# Zope imports
+
+import time
+import urllib.parse
+from hashlib import sha1
+
+from dataflake.cache.simple import SimpleCache
+from six.moves.urllib.parse import unquote
+
 from AccessControl import ClassSecurityInfo
+from AccessControl.class_init import InitializeClass
 from AccessControl.Permissions import manage_users
 from AccessControl.Permissions import view_management_screens
 from AccessControl.SecurityManagement import getSecurityManager
-try:
-    from AccessControl.users import domainSpecMatch
-    from OFS.userfolder import BasicUserFolder
-except ImportError:
-    # BBB Zope < 2.13
-    from AccessControl.User import domainSpecMatch
-    from AccessControl.User import BasicUserFolder
+from AccessControl.users import domainSpecMatch
 from Acquisition import aq_base
-from App.class_init import default__class_init__ as InitializeClass
 from App.Common import package_home
 from App.special_dtml import DTMLFile
 from BTrees.OOBTree import OOBTree
-from OFS.SimpleItem import SimpleItem
-from zope.interface import implements
+
+from OFS.SimpleItem import SimpleItem as SI
+from OFS.userfolder import BasicUserFolder
 from zope.interface import implementer
 
-# LDAPUserFolder package imports
-from Products.LDAPUserFolder.interfaces import ILDAPUserFolder
-from Products.LDAPUserFolder.LDAPDelegate import filter_format
-from Products.LDAPUserFolder.LDAPUser import NonexistingUser
-from Products.LDAPUserFolder.LDAPUser import LDAPUser
-from Products.LDAPUserFolder.SharedResource import getResource
-from Products.LDAPUserFolder.SimpleCache import SharedObject
-from Products.LDAPUserFolder.SimpleCache import SimpleCache
-from Products.LDAPUserFolder.utils import _createDelegate
-from Products.LDAPUserFolder.utils import _createLDAPPassword
-from Products.LDAPUserFolder.utils import crypt
-from Products.LDAPUserFolder.utils import GROUP_MEMBER_ATTRIBUTES
-from Products.LDAPUserFolder.utils import GROUP_MEMBER_MAP
-from Products.LDAPUserFolder.utils import guid2string
-from Products.LDAPUserFolder.utils import to_utf8
-from Products.LDAPUserFolder.utils import VALID_GROUP_ATTRIBUTES
+from .cache import UserCache
+from .cache import getResource
+from .interfaces import ILDAPUserFolder
+from .LDAPUser import LDAPUser
+from .LDAPUser import NonexistingUser
+from .utils import GROUP_MEMBER_ATTRIBUTES
+from .utils import GROUP_MEMBER_MAP
+from .utils import VALID_GROUP_ATTRIBUTES
+from .utils import _createDelegate
+from .utils import _createLDAPPassword
+from .utils import crypt
+from .utils import guid2string
+from .utils import to_utf8
+
 
 logger = logging.getLogger('event.LDAPUserFolder')
 _marker = []
@@ -70,16 +61,9 @@ _dtmldir = os.path.join(package_home(globals()), 'dtml')
 EDIT_PERMISSION = 'Change user folder'
 
 
-def safe_utf8(s):
-    if isinstance(s, bytes):
-        s = s.decode('utf8')
-    return s
-
-
 @implementer(ILDAPUserFolder)
 class LDAPUserFolder(BasicUserFolder):
-    """
-        LDAPUserFolder
+    """ LDAPUserFolder
 
         The LDAPUserFolder is a user database.  It contains management
         hooks so that it can be added to a Zope folder as an 'acl_users'
@@ -94,7 +78,8 @@ class LDAPUserFolder(BasicUserFolder):
     id = 'acl_users'
     isAUserFolder = 1
     isPrincipiaFolderish = 1
-
+    zmi_icon = 'fas fa-user-cog'
+    zmi_show_add_dialog = False
 
     #################################################################
     #
@@ -102,70 +87,45 @@ class LDAPUserFolder(BasicUserFolder):
     #
     #################################################################
 
-    manage_options=(
-        (
-        {'label' : 'Configure',	'action' : 'manage_main',
-         'help'  : ('LDAPUserFolder','Configure.stx')},
-        {'label' : 'LDAP Servers',	'action' : 'manage_servers',
-         'help'  : ('LDAPUserFolder','Servers.stx')},
-        {'label' : 'LDAP Schema', 'action' : 'manage_ldapschema',
-         'help'  : ('LDAPUserFolder', 'Schema.stx')},
-        {'label' : 'Caches', 'action' : 'manage_cache',
-         'help'  : ('LDAPUserFolder', 'Caches.stx')},
-        {'label' : 'Users', 'action' : 'manage_userrecords',
-         'help'  : ('LDAPUserFolder', 'Users.stx')},
-        {'label' : 'Groups', 'action' : 'manage_grouprecords',
-         'help' : ('LDAPUserFolder', 'Groups.stx')},
-        )
-        + SimpleItem.manage_options
-        )
+    manage_options = (
+        ({'label': 'Configure', 'action': 'manage_main',
+          'help': ('LDAPUserFolder', 'Configure.stx')},
+         {'label': 'LDAP Servers',  'action': 'manage_servers',
+          'help': ('LDAPUserFolder', 'Servers.stx')},
+         {'label': 'LDAP Schema', 'action': 'manage_ldapschema',
+          'help': ('LDAPUserFolder', 'Schema.stx')},
+         {'label': 'Caches', 'action': 'manage_cache',
+          'help': ('LDAPUserFolder', 'Caches.stx')},
+         {'label': 'Users', 'action': 'manage_userrecords',
+          'help': ('LDAPUserFolder', 'Users.stx')},
+         {'label': 'Groups', 'action': 'manage_grouprecords',
+          'help': ('LDAPUserFolder', 'Groups.stx')}) + SI.manage_options)
 
-    security.declareProtected(view_management_screens, 'manage')
-    security.declareProtected(view_management_screens, 'manage_main')
+    security.declareProtected(view_management_screens, 'manage')  # noqa
+    security.declareProtected(view_management_screens, 'manage_main')  # noqa
     manage = manage_main = DTMLFile('dtml/properties', globals())
     manage_main._setName('manage_main')
 
-    security.declareProtected(view_management_screens, 'manage_servers')
+    security.declareProtected(view_management_screens, 'manage_servers')  # noqa
     manage_servers = DTMLFile('dtml/servers', globals())
 
-    security.declareProtected(view_management_screens, 'manage_ldapschema')
+    security.declareProtected(view_management_screens, 'manage_ldapschema')  # noqa
     manage_ldapschema = DTMLFile('dtml/ldapschema', globals())
 
-    security.declareProtected(view_management_screens, 'manage_cache')
+    security.declareProtected(view_management_screens, 'manage_cache')  # noqa
     manage_cache = DTMLFile('dtml/cache', globals())
 
-    security.declareProtected(view_management_screens, 'manage_userrecords')
+    security.declareProtected(view_management_screens, 'manage_userrecords')  # noqa
     manage_userrecords = DTMLFile('dtml/users', globals())
 
-    security.declareProtected(view_management_screens, 'manage_grouprecords')
+    security.declareProtected(view_management_screens, 'manage_grouprecords') # noqa
     manage_grouprecords = DTMLFile('dtml/groups', globals())
-
 
     #################################################################
     #
     # Initialization code
     #
     #################################################################
-
-
-    def __setstate__(self, v):
-        """
-            __setstate__ is called whenever the instance is loaded
-            from the ZODB, like when Zope is restarted.
-        """
-        # Call inherited __setstate__ methods if they exist
-        LDAPUserFolder.inheritedAttribute('__setstate__')(self, v)
-
-        # Reset user caches
-        anon_timeout = self.getCacheTimeout('anonymous')
-        self._cache('anonymous').setTimeout(anon_timeout)
-
-        auth_timeout = self.getCacheTimeout('authenticated')
-        self._cache('authenticated').setTimeout(auth_timeout)
-
-        negative_timeout = self.getCacheTimeout('negative')
-        self._cache('negative').setTimeout(negative_timeout)
-
 
     def __init__(self, delegate_type='LDAP delegate'):
         """ Create a new LDAPUserFolder instance """
@@ -186,6 +146,7 @@ class LDAPUserFolder(BasicUserFolder):
                                     , 'integer': False
                                     }
                            }
+
 
         # Local DN to role tree for storing roles
         self._groups_store = OOBTree()
@@ -218,15 +179,13 @@ class LDAPUserFolder(BasicUserFolder):
         self.read_only = False
         self._extra_user_filter = ''
 
-    security.declarePrivate('_clearCaches')
     def _clearCaches(self):
         """ Clear all logs and caches for user-related information """
-        self._cache('anonymous').clear()
-        self._cache('authenticated').clear()
-        self._cache('negative').clear()
-        self._misc_cache().clear()
+        self._cache('anonymous').invalidate()
+        self._cache('authenticated').invalidate()
+        self._cache('negative').invalidate()
+        self._misc_cache().invalidate()
 
-    security.declarePrivate('_lookupuserbyattr')
     def _lookupuserbyattr(self, name, value, pwd=None):
         """
             returns a record's DN and the groups a uid belongs to
@@ -255,7 +214,7 @@ class LDAPUserFolder(BasicUserFolder):
             ob_flt = ['(%s=%s)' % (name, value)]
             search_str = self._getUserFilterString(filters=ob_flt)
         else:
-            ob_flt = [filter_format('(%s=%s)', (name, value))]
+            ob_flt = [self._delegate.filter_format('(%s=%s)', (name, value))]
             search_str = self._getUserFilterString(filters=ob_flt)
 
         # Step 1: Bind either as the Manager or anonymously to look
@@ -269,26 +228,18 @@ class LDAPUserFolder(BasicUserFolder):
         # If you want to log the password as well, which can introduce
         # security problems, uncomment the next lines and comment out
         # the line after that, then restart Zope.
-        #msg = '_lookupuserbyattr: Binding as "%s:%s"' % ( bind_dn
-        #                                                , bind_pwd
-        #                                                )
         logger.debug('_lookupuserbyattr: Binding as "%s"' % bind_dn)
         logger.debug('_lookupuserbyattr: Using filter "%s"' % search_str)
 
-        known_attrs = self.getSchemaConfig().keys()
+        known_attrs = list(self.getSchemaConfig().keys())
 
-        res = self._delegate.search( base=users_base
-                                   , scope=self.users_scope
-                                   , filter=search_str
-                                   , attrs=known_attrs
-                                   , bind_dn=bind_dn
-                                   , bind_pwd=bind_pwd
-                                   )
+        res = self._delegate.search(base=users_base, scope=self.users_scope,
+                                    filter=search_str, attrs=known_attrs,
+                                    bind_dn=bind_dn, bind_pwd=bind_pwd)
 
         if res['size'] == 0 or res['exception']:
             msg = '_lookupuserbyattr: No user "%s=%s" (%s)' % (
-                name, value, res['exception'] or 'n/a'
-                )
+                name, value, res['exception'] or 'n/a')
             logger.debug(msg)
             return None, None, None, None
 
@@ -313,7 +264,7 @@ class LDAPUserFolder(BasicUserFolder):
                 # the password, I cannot do it myself.
                 try:
                     self._delegate.connect(bind_dn=utf8_dn, bind_pwd=pwd)
-                except:
+                except Exception:
                     # Something went wrong, most likely bad credentials
                     msg = '_lookupuserbyattr: Binding as "%s" fails' % dn
                     logger.debug(msg)
@@ -321,18 +272,16 @@ class LDAPUserFolder(BasicUserFolder):
 
             logger.debug('_lookupuserbyattr: Re-binding as "%s"' % user_dn)
 
-            auth_res = self._delegate.search( base=utf8_dn
-                                            , scope=self._delegate.BASE
-                                            , filter='(objectClass=*)'
-                                            , attrs=known_attrs
-                                            , bind_dn=user_dn
-                                            , bind_pwd=user_pwd
-                                            )
+            auth_res = self._delegate.search(base=utf8_dn,
+                                             scope=self._delegate.BASE,
+                                             filter='(objectClass=*)',
+                                             attrs=known_attrs,
+                                             bind_dn=user_dn,
+                                             bind_pwd=user_pwd)
 
             if auth_res['size'] == 0 or auth_res['exception']:
                 msg = '_lookupuserbyattr: "%s" lookup fails bound as "%s"' % (
-                    dn, user_dn
-                    )
+                    dn, user_dn)
                 logger.debug(msg)
                 return None, None, None, None
 
@@ -349,22 +298,18 @@ class LDAPUserFolder(BasicUserFolder):
 
         return roles, dn, user_attrs, groups
 
-
-    security.declareProtected(manage_users, 'manage_reinit')
+    @security.protected(manage_users)
     def manage_reinit(self, REQUEST=None):
         """ re-initialize and clear out users and log """
         self._clearCaches()
-        self._hash = '%s-%s' % ( str(self.getPhysicalPath())
-                               , str(random.random())
-                               )
+        self._hash = '%s-%s' % (str(self.getPhysicalPath()),
+                                str(random.random()))
         logger.info('manage_reinit: Cleared caches')
 
         if REQUEST:
             msg = 'User caches cleared'
             return self.manage_cache(manage_tabs_message=msg)
 
-
-    security.declarePrivate('_setProperty')
     def _setProperty(self, prop_name, prop_value):
         """ Set a property on the LDAP User Folder object """
         if not hasattr(self, prop_name):
@@ -373,38 +318,39 @@ class LDAPUserFolder(BasicUserFolder):
 
         setattr(self, prop_name, prop_value)
 
-
-    security.declareProtected(EDIT_PERMISSION, 'manage_changeProperty')
-    def manage_changeProperty( self
-                             , prop_name
-                             , prop_value
-                             , client_form='manage_main'
-                             , REQUEST=None
-                             ):
+    @security.protected(EDIT_PERMISSION)
+    def manage_changeProperty(self, prop_name, prop_value,
+                              client_form='manage_main', REQUEST=None):
         """ The public front end for changing single properties """
         try:
             self._setProperty(prop_name, prop_value)
             self._clearCaches()
             msg = 'Attribute "%s" changed.' % prop_name
-        except AttributeError(e):
+        except AttributeError as e:
+
             msg = e.args[0]
 
         if REQUEST is not None:
             form = getattr(self, client_form)
             return form(manage_tabs_message=msg)
 
-
-    security.declareProtected(EDIT_PERMISSION, 'manage_edit')
-    def manage_edit( self, title, login_attr, uid_attr, users_base
-                   , users_scope, roles,  groups_base, groups_scope
-                   , binduid, bindpwd, binduid_usage=1, rdn_attr='cn'
-                   , obj_classes='top,person', local_groups=0
-                   , implicit_mapping=0, encryption='SHA', read_only=0
-                   , extra_user_filter='', REQUEST=None
-                   ):
+    @security.protected(EDIT_PERMISSION)
+    def manage_edit(self, title, login_attr, uid_attr, users_base,
+                    users_scope, roles,  groups_base, groups_scope,
+                    binduid, bindpwd, binduid_usage=1, rdn_attr='cn',
+                    obj_classes='top,person', local_groups=0,
+                    implicit_mapping=0, encryption='SHA', read_only=0,
+                    extra_user_filter='', REQUEST=None):
         """ Edit the LDAPUserFolder Object """
         if not binduid:
             binduid_usage = 0
+
+        # The ZMI password field uses a hashed password string to make
+        # sure no one can read the original password in the page source.
+        # If the password here matches the expected hashed version, no
+        # cahnge has occurred.
+        if bindpwd == self.getEncryptedBindPassword():
+            bindpwd = self._bindpwd
 
         self.title = title
         self.users_base = users_base
@@ -417,15 +363,12 @@ class LDAPUserFolder(BasicUserFolder):
         if bindpwd != self.getEncryptedBindPassword():
             self._bindpwd = bindpwd
 
-        self._delegate.edit( login_attr=login_attr,
-                             users_base=users_base,
-                             rdn_attr=rdn_attr,
-                             objectclasses=obj_classes,
-                             bind_dn=self._binduid,
-                             bind_pwd=self._bindpwd,
-                             binduid_usage=binduid_usage,
-                             read_only=read_only,
-                           )
+
+        self._delegate.edit(login_attr=login_attr, users_base=users_base,
+                            rdn_attr=rdn_attr, objectclasses=obj_classes,
+                            bind_dn=self._binduid, bind_pwd=self._bindpwd,
+                            binduid_usage=binduid_usage, read_only=read_only)
+
 
         if isinstance(roles, str):
             roles = [x.strip() for x in roles.split(',')]
@@ -444,24 +387,21 @@ class LDAPUserFolder(BasicUserFolder):
             obj_classes = [x.strip() for x in obj_classes.split(',')]
         self._user_objclasses = obj_classes
 
-        my_attrs = self.getSchemaConfig().keys()
+        schema = self.getSchemaConfig()
 
-        if rdn_attr not in my_attrs:
-            self.manage_addLDAPSchemaItem( ldap_name=rdn_attr
-                                         , friendly_name=rdn_attr
-                                         )
+        if rdn_attr not in schema:
+            self.manage_addLDAPSchemaItem(ldap_name=rdn_attr,
+                                          friendly_name=rdn_attr)
         self._rdnattr = rdn_attr
 
-        if login_attr != 'dn' and login_attr not in my_attrs:
-            self.manage_addLDAPSchemaItem( ldap_name=login_attr
-                                         , friendly_name=login_attr
-                                         )
+        if login_attr != 'dn' and login_attr not in schema:
+            self.manage_addLDAPSchemaItem(ldap_name=login_attr,
+                                          friendly_name=login_attr)
         self._login_attr = login_attr
 
-        if uid_attr != 'dn' and uid_attr not in my_attrs:
-            self.manage_addLDAPSchemaItem( ldap_name=uid_attr
-                                         , friendly_name=uid_attr
-                                         )
+        if uid_attr != 'dn' and uid_attr not in schema:
+            self.manage_addLDAPSchemaItem(ldap_name=uid_attr,
+                                          friendly_name=uid_attr)
         self._uid_attr = uid_attr
 
         self._extra_user_filter = extra_user_filter.strip()
@@ -477,16 +417,9 @@ class LDAPUserFolder(BasicUserFolder):
         if REQUEST:
             return self.manage_main(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'manage_addServer')
-    def manage_addServer( self
-                        , host
-                        , port='389'
-                        , use_ssl=0
-                        , conn_timeout=5
-                        , op_timeout=-1
-                        , REQUEST=None
-                        ):
+    @security.protected(manage_users)
+    def manage_addServer(self, host, port='389', use_ssl=0, conn_timeout=5,
+                         op_timeout=-1, REQUEST=None):
         """ Add a new server to the list of servers in use """
         self._delegate.addServer(host, port, use_ssl, conn_timeout, op_timeout)
         msg = 'Server at %s:%s added' % (host, port)
@@ -494,14 +427,12 @@ class LDAPUserFolder(BasicUserFolder):
         if REQUEST:
             return self.manage_servers(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'getServers')
+    @security.protected(manage_users)
     def getServers(self):
         """ Proxy method used for the ZMI """
         return tuple(self._delegate.getServers())
 
-
-    security.declareProtected(manage_users, 'manage_deleteServers')
+    @security.protected(manage_users)
     def manage_deleteServers(self, position_list=[], REQUEST=None):
         """ Delete servers from the list of servers in use """
         if len(position_list) == 0:
@@ -513,8 +444,7 @@ class LDAPUserFolder(BasicUserFolder):
         if REQUEST:
             return self.manage_servers(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'getMappedUserAttrs')
+    @security.protected(manage_users)
     def getMappedUserAttrs(self):
         """ Return the mapped user attributes """
         schema = self.getSchemaDict()
@@ -523,8 +453,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return tuple([(x[ln], x[pn]) for x in schema if x.get(pn, '')])
 
-
-    security.declareProtected(manage_users, 'getMultivaluedUserAttrs')
+    @security.protected(manage_users)
     def getMultivaluedUserAttrs(self):
         """ Return sequence of user attributes that are multi-valued"""
         schema = self.getSchemaDict()
@@ -532,7 +461,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return tuple(mv)
 
-    security.declareProtected(manage_users, 'getBinaryUserAttrs')
+    @security.protected(manage_users)
     def getBinaryUserAttrs(self):
         """ Return sequence of binary user attributes"""
         schema = self.getSchemaDict()
@@ -540,15 +469,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return tuple(bins)
 
-    security.declareProtected(manage_users, 'getBinaryUserAttrs')
-    def getIntegerUserAttrs(self):
-        """ Return sequence of integer user attributes"""
-        schema = self.getSchemaDict()
-        bins = [x['ldap_name'] for x in schema if x.get('integer', '')]
-
-        return tuple(bins)
-
-    security.declareProtected(manage_users, 'getUsers')
+    @security.protected(manage_users)
     def getUsers(self, authenticated=1):
         """Return a list of *cached* user objects"""
         if authenticated:
@@ -556,8 +477,7 @@ class LDAPUserFolder(BasicUserFolder):
         else:
             return self._cache('anonymous').getCache()
 
-
-    security.declareProtected(manage_users, 'getAttributesOfAllObjects')
+    @security.protected(manage_users)
     def getAttributesOfAllObjects(self, base_dn, scope, filter_str, attrnames):
         """ Return a dictionary keyed on attribute name where each value
         in the dict is a sequence of attribute values specified by 'attrnames'
@@ -569,11 +489,8 @@ class LDAPUserFolder(BasicUserFolder):
         result_dict = {}
         [result_dict.__setitem__(x, []) for x in attrnames]
 
-        res = self._delegate.search( base=base_dn
-                                   , scope=scope
-                                   , attrs=attrnames
-                                   , filter=filter_str
-                                   )
+        res = self._delegate.search(base=base_dn, scope=scope,
+                                    attrs=attrnames, filter=filter_str)
 
         if res['size'] == 0 or res['exception']:
             msg = ('getAttributesOfAllObjects: Cannot find any users (%s)'
@@ -601,8 +518,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return result_dict
 
-
-    security.declareProtected(manage_users, 'getUserIds')
+    @security.protected(manage_users)
     def getUserIds(self):
         """ Return a tuple containing all user IDs """
         expires = self._misc_cache().get('useridlistexpires')
@@ -611,11 +527,9 @@ class LDAPUserFolder(BasicUserFolder):
 
         user_filter = self._getUserFilterString()
 
-        useridlist = self.getAttributesOfAllObjects(
+        useridlist = sorted(self.getAttributesOfAllObjects(
             self.users_base, self._delegate.getScopes()[self.users_scope],
-            user_filter, (self._uid_attr,)).get(self._uid_attr)
-
-        useridlist.sort()
+            user_filter, (self._uid_attr,)).get(self._uid_attr))
 
         self._misc_cache().set('useridlist', useridlist[:])
         # Expire after 600 secs
@@ -623,8 +537,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return tuple(useridlist)
 
-
-    security.declareProtected(manage_users, 'getUserNames')
+    @security.protected(manage_users)
     def getUserNames(self):
         """ Return a tuple containing all logins """
         loginlist = []
@@ -638,8 +551,8 @@ class LDAPUserFolder(BasicUserFolder):
             self.users_base, self._delegate.getScopes()[self.users_scope],
             user_filter, (self._login_attr,))
 
-        if ( len(loginlistinfo) == 0 or
-             loginlistinfo.get(self._login_attr, None) == [] ):
+        if len(loginlistinfo) == 0 or \
+           loginlistinfo.get(self._login_attr, None) == []:
             # Special case: Either there really is no user, or the server
             # got angry about requesting every single record and threw back
             # an exception as a result. In order to show the simple text
@@ -647,8 +560,7 @@ class LDAPUserFolder(BasicUserFolder):
             # to receive a OverflowError exception.
             raise OverflowError
 
-        loginlist = loginlistinfo[self._login_attr]
-        loginlist.sort()
+        loginlist = sorted(loginlistinfo[self._login_attr])
 
         self._misc_cache().set('loginlist', loginlist[:])
         # Expire after 600 secs
@@ -656,8 +568,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return tuple(loginlist)
 
-
-    security.declareProtected(manage_users, 'getUserIdsAndNames')
+    @security.protected(manage_users)
     def getUserIdsAndNames(self):
         """ Return a tuple of (user ID, login) tuples """
         expires = self._misc_cache().get('useridnamelistexpires')
@@ -670,19 +581,15 @@ class LDAPUserFolder(BasicUserFolder):
             self.users_base, self._delegate.getScopes()[self.users_scope],
             user_filter, (self._uid_attr, self._login_attr))
 
-        login_id_list = zip( d.get(self._uid_attr)
-                           , d.get(self._login_attr)
-                           )
+        login_id_list = sorted(zip(d.get(self._uid_attr),
+                                   d.get(self._login_attr)))
 
-        login_id_list.sort()
         self._misc_cache().set('useridnamelist', login_id_list)
         # Expire after 600 secs
         self._misc_cache().set('useridnamelistexpires', time.time() + 600)
 
         return tuple(login_id_list)
 
-
-    security.declarePrivate('_getUserFilterString')
     def _getUserFilterString(self, filters=[]):
         """ Return filter string suitable for querying on user objects
 
@@ -699,36 +606,34 @@ class LDAPUserFolder(BasicUserFolder):
         o if the Additional user search filter has been configured in the
           ZMI it will also be ANDed into the final search filter.
         """
-        user_filter_list = [filter_format('(%s=%s)', ('objectClass', o))
-                               for o in filter(None, self._user_objclasses)]
+        user_obclasses = [x for x in self._user_objclasses if x]
+        user_filter_list = [self._delegate.filter_format('(%s=%s)',
+                                                         ('objectClass', o))
+                            for o in user_obclasses]
         if filters:
             user_filter_list.extend(filters)
         else:
             user_filter_list.append("(%s=*)" % self._uid_attr)
         extra_filter = self.getProperty('_extra_user_filter')
+
         if extra_filter:
             user_filter_list.append(extra_filter)
-        user_filter = '(&%s)' % ''.join(map(safe_utf8, user_filter_list))
+        user_filter = '(&%s)' % ''.join(user_filter_list)
 
         return user_filter
 
-
-    security.declareProtected(manage_users, 'getUserByAttr')
     def getUserByAttr(self, name, value, pwd=None, cache=0):
-        """
-            Get a user based on a name/value pair representing an
+        """ Get a user based on a name/value pair representing an
             LDAP attribute provided to the user.  If cache is True,
             try to cache the result using 'value' as the key
         """
         if not value:
             return None
 
-        _pwd = pwd and pwd.encode() or b''
         cache_type = pwd and 'authenticated' or 'anonymous'
-        negative_cache_key = '%s:%s:%s' % ( name
-                                          , value
-                                          , sha_new(_pwd).hexdigest()
-                                          )
+        negative_cache_key = '%s:%s:%s' % (name, value,
+                                           sha1(str(pwd or '').encode('utf-8')).hexdigest())
+
         if cache:
             if self._cache('negative').get(negative_cache_key) is not None:
                 return None
@@ -737,14 +642,12 @@ class LDAPUserFolder(BasicUserFolder):
 
             if cached_user:
                 msg = 'getUserByAttr: "%s" cached in %s cache' % (
-                    value, cache_type
-                    )
+                    value, cache_type)
                 logger.debug(msg)
                 return cached_user
 
         user_roles, user_dn, user_attrs, ldap_groups = self._lookupuserbyattr(
-            name=name, value=value, pwd=pwd
-            )
+            name=name, value=value, pwd=pwd)
 
         if user_dn is None:
             logger.debug('getUserByAttr: "%s=%s" not found' % (name, value))
@@ -753,16 +656,14 @@ class LDAPUserFolder(BasicUserFolder):
 
         if user_attrs is None:
             msg = 'getUserByAttr: "%s=%s" has no properties, bailing' % (
-                name, value
-                )
+                name, value)
             logger.debug(msg)
             self._cache('negative').set(negative_cache_key, NonexistingUser())
             return None
 
         if user_roles is None or user_roles == self._roles:
             msg = 'getUserByAttr: "%s=%s" only has roles %s' % (
-                name, value, str(user_roles)
-                )
+                name, value, str(user_roles))
             logger.debug(msg)
 
         login_name = user_attrs.get(self._login_attr, '')
@@ -777,8 +678,7 @@ class LDAPUserFolder(BasicUserFolder):
                 login_name = login_name[0]
         elif len(login_name) == 0:
             msg = 'getUserByAttr: "%s" has no "%s" (Login) value!' % (
-                    user_dn, self._login_attr
-                    )
+                user_dn, self._login_attr)
             logger.debug(msg)
             self._cache('negative').set(negative_cache_key, NonexistingUser())
             return None
@@ -787,31 +687,23 @@ class LDAPUserFolder(BasicUserFolder):
             uid = uid[0]
         elif len(uid) == 0:
             msg = 'getUserByAttr: "%s" has no "%s" (UID Attribute) value!' % (
-                    user_dn, self._uid_attr
-                    )
+                user_dn, self._uid_attr)
             logger.debug(msg)
             self._cache('negative').set(negative_cache_key, NonexistingUser())
             return None
 
-        user_obj = LDAPUser( uid
-                           , login_name
-                           , pwd or 'undef'
-                           , user_roles or []
-                           , []
-                           , user_dn
-                           , user_attrs
-                           , self.getMappedUserAttrs()
-                           , self.getMultivaluedUserAttrs()
-                           , ldap_groups=ldap_groups
-                           )
+        user_obj = LDAPUser(uid, login_name, pwd or 'undef', user_roles or [],
+                            [], user_dn, user_attrs, self.getMappedUserAttrs(),
+                            self.getMultivaluedUserAttrs(),
+                            self.getBinaryUserAttrs(),
+                            ldap_groups=ldap_groups)
 
         if cache:
             self._cache(cache_type).set(value, user_obj)
 
         return user_obj
 
-
-    security.declareProtected(manage_users, 'getUser')
+    @security.protected(manage_users)
     def getUser(self, name, pwd=None):
         """Return a user object specified by its username or None """
         # we want to cache based on login attr, because it's the
@@ -820,8 +712,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return user
 
-
-    security.declareProtected(manage_users, 'getUserById')
+    @security.protected(manage_users)
     def getUserById(self, id, default=_marker):
         """ Return a user object specified by its user id or None """
         user = self.getUserByAttr(self._uid_attr, id, cache=1)
@@ -830,15 +721,12 @@ class LDAPUserFolder(BasicUserFolder):
 
         return user
 
-
     def getUserByDN(self, user_dn):
         """ Make a user object from a DN """
         uid_attr = self._uid_attr
 
-        res = self._delegate.search( base=user_dn
-                                   , scope=self._delegate.BASE
-                                   , attrs=[uid_attr]
-                                   )
+        res = self._delegate.search(base=user_dn, scope=self._delegate.BASE,
+                                    attrs=[uid_attr])
 
         if res['exception'] or res['size'] == 0:
             return None
@@ -852,16 +740,16 @@ class LDAPUserFolder(BasicUserFolder):
 
         return user
 
-
     def authenticate(self, name, password, request):
         superuser = self._emergency_user
 
         if not name:
             return None
 
-        if ( superuser and
-             name == superuser.getUserName() and
-             superuser.authenticate(password, request) ):
+        if superuser and \
+           name == superuser.getUserName() and \
+           superuser.authenticate(password, request):
+
             user = superuser
         else:
             user = self.getUser(name, password)
@@ -873,60 +761,59 @@ class LDAPUserFolder(BasicUserFolder):
 
         return user
 
-
     #################################################################
     #
     # Stuff formerly in LDAPShared.py
     #
     #################################################################
 
-    security.declareProtected(manage_users, 'getUserDetails')
+    @security.protected(manage_users)
     def getUserDetails(self, encoded_dn, format=None, attrs=()):
         """ Return all attributes for a given DN """
-        dn = to_utf8(urllib.parse.unquote(encoded_dn))
+
+        dn = encoded_dn
 
         if not attrs:
-            attrs = self.getSchemaConfig().keys()
+            attrs = list(self.getSchemaConfig().keys())
 
-        res = self._delegate.search( base=dn
-                                   , scope=self._delegate.BASE
-                                   , attrs=attrs
-                                   )
+        res = self._delegate.search(base=dn, scope=self._delegate.BASE,
+                                    attrs=attrs)
 
         if res['exception']:
-            if format == None:
+            if format is None:
                 result = ((res['exception'], res),)
             elif format == 'dictionary':
-                result = { 'cn': '###Error: %s' % res['exception'] }
+                result = {'cn': '###Error: %s' % res['exception']}
         elif res['size'] > 0:
             value_dict = res['results'][0]
 
-            if format == None:
-                result = list(value_dict.items())
-                result.sort()
+            if format is None:
+                result = sorted(value_dict.items())
+
             elif format == 'dictionary':
                 result = value_dict
         else:
-            if format == None:
+            if format is None:
                 result = ()
             elif format == 'dictionary':
                 result = {}
 
         return result
 
-
-    security.declareProtected(manage_users, 'getGroupDetails')
+    @security.protected(manage_users)
     def getGroupDetails(self, encoded_cn):
         """ Return all group details """
         result = ()
         cn = urllib.parse.unquote(encoded_cn)
 
         if not self._local_groups:
-            res = self._delegate.search( base=self.groups_base
-                                       , scope=self.groups_scope
-                                       , filter=filter_format('(cn=%s)', (cn,))
-                                       , attrs=list(VALID_GROUP_ATTRIBUTES)
-                                       )
+
+            fltr = self._delegate.filter_format('(cn=%s)', (cn,))
+            res = self._delegate.search(base=self.groups_base,
+                                        scope=self.groups_scope,
+                                        filter=fltr,
+                                        attrs=list(VALID_GROUP_ATTRIBUTES))
+
 
             if res['exception']:
                 exc = res['exception']
@@ -934,8 +821,7 @@ class LDAPUserFolder(BasicUserFolder):
                 result = (('Exception', exc),)
 
             elif res['size'] > 0:
-                result = res['results'][0].items()
-                result.sort()
+                result = sorted(res['results'][0].items())
 
             else:
                 logger.debug('getGroupDetails: No group "%s"' % cn)
@@ -959,8 +845,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return result
 
-
-    security.declareProtected(manage_users, 'getGroupedUsers')
+    @security.protected(manage_users)
     def getGroupedUsers(self, groups=None):
         """ Return all those users that are in a group """
         all_dns = {}
@@ -981,7 +866,9 @@ class LDAPUserFolder(BasicUserFolder):
         for dn in all_dns.keys():
             try:
                 user = self.getUserByDN(to_utf8(dn))
-            except:
+
+            except Exception:
+
                 user = None
 
             if user is not None:
@@ -989,8 +876,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return tuple(users)
 
-
-    security.declareProtected(manage_users, 'getLocalUsers')
+    @security.protected(manage_users)
     def getLocalUsers(self):
         """ Return all those users who are in locally stored groups """
         local_users = []
@@ -1000,8 +886,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return tuple(local_users)
 
-
-    security.declareProtected(manage_users, 'searchUsers')
+    @security.protected(manage_users)
     def searchUsers(self, attrs=(), exact_match=False, **kw):
         """ Look up matching user records based on one or mmore attributes
 
@@ -1011,13 +896,15 @@ class LDAPUserFolder(BasicUserFolder):
         ldap name, the name an attribute is mapped to explicitly, and the
         friendly name it is known by.
         """
-        users  = []
+
+        users = []
+
         users_base = self.users_base
         search_scope = self.users_scope
         filt_list = []
 
         if not attrs:
-            attrs = self.getSchemaConfig().keys()
+            attrs = list(self.getSchemaConfig().keys())
 
         schema_translator = {}
         for ldap_key, info in self.getSchemaConfig().items():
@@ -1038,9 +925,9 @@ class LDAPUserFolder(BasicUserFolder):
                 search_scope = self._delegate.BASE
 
             elif search_param == 'objectGUID':
-                # we can't escape the objectGUID query piece using filter_format
-                # because it replaces backslashes, which we need as a result
-                # of guid2string
+                # we can't escape the objectGUID query piece using
+                # filter_format because it replaces backslashes, which we
+                # need as a result of guid2string
                 users_base = self.users_base
                 guid = guid2string(search_term)
 
@@ -1056,40 +943,32 @@ class LDAPUserFolder(BasicUserFolder):
                 if ldap_param is None:
                     continue
 
+                parms = (ldap_param, search_term)
                 if search_term and exact_match:
-                    filt_list.append( filter_format( '(%s=%s)'
-                                                   , (ldap_param, search_term)
-                                                   ) )
+                    add_f = self._delegate.filter_format('(%s=%s)', parms)
                 elif search_term:
-                    filt_list.append( filter_format( '(%s=*%s*)'
-                                                   , (ldap_param, search_term)
-                                                   ) )
+                    add_f = self._delegate.filter_format('(%s=*%s*)', parms)
                 else:
-                    filt_list.append('(%s=*)' % ldap_param)
+                    add_f = '(%s=*)' % ldap_param
+                filt_list.append(add_f)
 
         if len(filt_list) == 0 and search_param != 'dn':
             # We have no useful filter criteria, bail now before bringing the
             # site down with a search that is overly broad.
-            res = { 'exception' : 'No useful filter criteria given' }
+            res = {'exception': 'No useful filter criteria given'}
             res['size'] = 0
             search_str = ''
 
         else:
             search_str = self._getUserFilterString(filters=filt_list)
-            res = self._delegate.search( base=users_base
-                                       , scope=search_scope
-                                       , filter=search_str
-                                       , attrs=attrs
-                                       )
+            res = self._delegate.search(base=users_base, scope=search_scope,
+                                        filter=search_str, attrs=attrs)
 
         if res['exception']:
             logger.debug('findUser Exception (%s)' % res['exception'])
             msg = 'findUser search filter "%s"' % search_str
             logger.debug(msg)
-            users = [{ 'dn' : res['exception']
-                     , 'cn' : 'n/a'
-                     , 'sn' : 'Error'
-                     }]
+            users = [{'dn': res['exception'], 'cn': 'n/a', 'sn': 'Error'}]
 
         elif res['size'] > 0:
             res_dicts = res['results']
@@ -1107,7 +986,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return users
 
-    security.declareProtected(manage_users, 'searchGroups')
+    @security.protected(manage_users)
     def searchGroups(self, attrs=(), exact_match=False, **kw):
         """ Look up matching group records based on one or mmore attributes
 
@@ -1117,7 +996,7 @@ class LDAPUserFolder(BasicUserFolder):
         is currently no schema support for groups. The list of accepted
         group attributes is static for now.
         """
-        groups  = []
+        groups = []
         groups_base = self.groups_base
         filt_list = []
         search_str = ''
@@ -1129,9 +1008,9 @@ class LDAPUserFolder(BasicUserFolder):
                 groups_base = search_term
 
             elif search_param == 'objectGUID':
-                # we can't escape the objectGUID query piece using filter_format
-                # because it replaces backslashes, which we need as a result
-                # of guid2string
+                # we can't escape the objectGUID query piece using
+                # filter_format because it replaces backslashes, which we
+                # need as a result of guid2string
                 groups_base = self.groups_base
                 guid = guid2string(search_term)
 
@@ -1143,41 +1022,36 @@ class LDAPUserFolder(BasicUserFolder):
             else:
                 # If the keyword arguments contain unknown items we will
                 # simply ignore them and continue looking.
+                parms = (search_param, search_term)
                 if search_term and exact_match:
-                    filt_list.append( filter_format( '(%s=%s)'
-                                                   , (search_param, search_term)
-                                                   ) )
+                    add_f = self._delegate.filter_format('(%s=%s)', parms)
                 elif search_term:
-                    filt_list.append( filter_format( '(%s=*%s*)'
-                                                   , (search_param, search_term)
-                                                   ) )
+                    add_f = self._delegate.filter_format('(%s=*%s*)', parms)
                 else:
-                    filt_list.append('(%s=*)' % search_param)
+                    add_f = '(%s=*)' % search_param
+                filt_list.append(add_f)
 
         if len(filt_list) == 0:
             # We have no useful filter criteria, bail now before bringing the
             # site down with a search that is overly broad.
-            res = { 'exception' : 'No useful filter criteria given' }
+            res = {'exception': 'No useful filter criteria given'}
             res['size'] = 0
 
         else:
-            oc_filt = '(|%s)' % ''.join([ filter_format('(%s=%s)', ('objectClass', o))
-                                          for o in GROUP_MEMBER_MAP.keys() ])
+            ff = self._delegate.filter_format
+            oc_filt = '(|%s)' % ''.join([ff('(%s=%s)', ('objectClass', o))
+                                         for o in GROUP_MEMBER_MAP.keys()])
             filt_list.append(oc_filt)
             search_str = '(&%s)' % ''.join(filt_list)
-            res = self._delegate.search( base=groups_base
-                                       , scope=self.groups_scope
-                                       , filter=search_str
-                                       , attrs=attrs
-                                       )
+            res = self._delegate.search(base=groups_base,
+                                        scope=self.groups_scope,
+                                        filter=search_str, attrs=attrs)
 
         if res['exception']:
             logger.warn('searchGroups Exception (%s)' % res['exception'])
             msg = 'searchGroups searched "%s"' % search_str
             logger.warn(msg)
-            groups = [{ 'dn' : res['exception']
-                      , 'cn' : 'n/a'
-                     }]
+            groups = [{'dn': res['exception'], 'cn': 'n/a'}]
 
         elif res['size'] > 0:
             res_dicts = res['results']
@@ -1195,21 +1069,18 @@ class LDAPUserFolder(BasicUserFolder):
 
         return groups
 
-
-    security.declareProtected(manage_users, 'findUser')
+    @security.protected(manage_users)
     def findUser(self, search_param, search_term, attrs=(), exact_match=False):
         """ Look up matching user records based on a single attribute """
-        kw = { search_param : search_term }
+        kw = {search_param: search_term}
         if not attrs:
-            attrs = self.getSchemaConfig().keys()
+            attrs = list(self.getSchemaConfig().keys())
 
         return self.searchUsers(attrs=attrs, exact_match=exact_match, **kw)
 
-
-    security.declareProtected(manage_users, 'getGroups')
+    @security.protected(manage_users)
     def getGroups(self, dn='*', attr=None, pwd=''):
-        """
-            returns a list of possible groups from the ldap tree
+        """ returns a list of possible groups from the ldap tree
             (Used e.g. in showgroups.dtml) or, if a DN is passed
             in, all groups for that particular DN.
         """
@@ -1246,7 +1117,8 @@ class LDAPUserFolder(BasicUserFolder):
                 group_filter = '(|'
 
                 for g_name, m_name in GROUP_MEMBER_MAP.items():
-                    fltr = filter_format(f_template, (g_name, m_name, dn))
+                    fltr = self._delegate.filter_format(f_template,
+                                                        (g_name, m_name, dn))
                     group_filter += fltr
 
                 group_filter += ')'
@@ -1255,18 +1127,15 @@ class LDAPUserFolder(BasicUserFolder):
                 group_filter = '(|'
 
                 for g_name in GROUP_MEMBER_MAP.keys():
-                    fltr = filter_format('(objectClass=%s)', (g_name,))
+                    fltr = self._delegate.filter_format('(objectClass=%s)',
+                                                        (g_name,))
                     group_filter += fltr
 
                 group_filter += ')'
 
-            res = self._delegate.search( base=self.groups_base
-                                       , scope=gscope
-                                       , filter=group_filter
-                                       , attrs=['cn']
-                                       , bind_dn=''
-                                       , bind_pwd=''
-                                       )
+            res = self._delegate.search(base=self.groups_base, scope=gscope,
+                                        filter=group_filter, attrs=['cn'],
+                                        bind_dn='', bind_pwd='')
 
             exc = res['exception']
             if exc:
@@ -1292,8 +1161,7 @@ class LDAPUserFolder(BasicUserFolder):
 
         return group_list
 
-
-    security.declareProtected(manage_users, 'getGroupType')
+    @security.protected(manage_users)
     def getGroupType(self, group_dn):
         """ get the type of group """
         if self._local_groups:
@@ -1304,20 +1172,16 @@ class LDAPUserFolder(BasicUserFolder):
 
         else:
             group_type = 'n/a'
-            res = self._delegate.search( base=to_utf8(group_dn)
-                                       , scope=self._delegate.BASE
-                                       , attrs=['objectClass']
-                                       )
-
+            res = self._delegate.search(base=to_utf8(group_dn),
+                                        scope=self._delegate.BASE,
+                                        attrs=['objectClass'])
             if res['exception']:
-                msg = 'getGroupType: No group "%s" (%s)' % ( group_dn
-                                                           , res['exception']
-                                                           )
+                msg = 'getGroupType: No group "%s" (%s)' % (
+                    group_dn, res['exception'])
                 logger.info(msg)
 
             else:
-                groups = GROUP_MEMBER_MAP.keys()
-                l_groups = [x.lower() for x in groups]
+                l_groups = [x.lower() for x in GROUP_MEMBER_MAP.keys()]
                 g_attrs = res['results'][0]
                 group_obclasses = g_attrs.get('objectClass', [])
                 group_obclasses.extend(g_attrs.get('objectclass', []))
@@ -1328,16 +1192,14 @@ class LDAPUserFolder(BasicUserFolder):
 
         return group_type
 
-
-    security.declareProtected(manage_users, 'getGroupMappings')
+    @security.protected(manage_users)
     def getGroupMappings(self):
         """ Return the dictionary that maps LDAP groups map to Zope roles """
         mappings = getattr(self, '_groups_mappings', {})
 
-        return mappings.items()
+        return list(mappings.items())
 
-
-    security.declareProtected(manage_users, 'manage_addGroupMapping')
+    @security.protected(manage_users)
     def manage_addGroupMapping(self, group_name, role_name, REQUEST=None):
         """ Map a LDAP group to a Zope role """
         mappings = getattr(self, '_groups_mappings', {})
@@ -1347,11 +1209,10 @@ class LDAPUserFolder(BasicUserFolder):
 
         if REQUEST:
             msg = 'Added LDAP group to Zope role mapping: %s -> %s' % (
-                    group_name, role_name)
+                group_name, role_name)
             return self.manage_grouprecords(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'manage_deleteGroupMappings')
+    @security.protected(manage_users)
     def manage_deleteGroupMappings(self, group_names, REQUEST=None):
         """ Delete mappings from LDAP group to Zope role """
         mappings = getattr(self, '_groups_mappings', {})
@@ -1365,11 +1226,9 @@ class LDAPUserFolder(BasicUserFolder):
 
         if REQUEST:
             msg = 'Deleted LDAP group to Zope role mapping for: %s' % (
-                    ', '.join(group_names))
+                ', '.join(group_names))
             return self.manage_grouprecords(manage_tabs_message=msg)
 
-
-    security.declarePrivate('_mapRoles')
     def _mapRoles(self, groups):
         """ Perform the mapping of LDAP groups to Zope roles """
         mappings = getattr(self, '_groups_mappings', {})
@@ -1385,51 +1244,43 @@ class LDAPUserFolder(BasicUserFolder):
 
         return roles
 
-
-    security.declareProtected(view_management_screens, 'getProperty')
+    @security.protected(view_management_screens)
     def getProperty(self, prop_name, default=''):
         """ Get at LDAPUserFolder properties """
         return getattr(self, prop_name, default)
 
-
-    security.declareProtected(manage_users, 'getLDAPSchema')
+    @security.protected(manage_users)
     def getLDAPSchema(self):
         """ Retrieve the LDAP schema this product knows about """
         raw_schema = self.getSchemaDict()
-        schema = [(x['ldap_name'], x['friendly_name']) for x in raw_schema]
-        schema.sort()
+        schema = sorted([(x['ldap_name'], x['friendly_name'])
+                         for x in raw_schema])
 
         return tuple(schema)
 
-
-    security.declareProtected(manage_users, 'getSchemaDict')
+    @security.protected(manage_users)
     def getSchemaDict(self):
         """ Retrieve schema as list of dictionaries """
 
-        # XXX: dunno why sort values that are actually a list of dict
-        # what is supposed to sort what?? schemaconfig example: {'a': {'tre': 3}, 'b': {'qua': 4}}
-        # so keep some sort of predictiable sort by len of dict
-
-        all_items = list(self.getSchemaConfig().values())
-        all_items.sort(key = lambda x: len(x))
+        # ldap_names = [schema_item['ldap_name'] for schema_item in self.getSchemaConfig().values()]
+        all_items = sorted(self.getSchemaConfig().values(),
+                           key=lambda schema_item: schema_item['ldap_name'])
 
         return tuple(all_items)
 
-
-    security.declareProtected(EDIT_PERMISSION, 'setSchemaConfig')
+    @security.protected(EDIT_PERMISSION)
     def setSchemaConfig(self, schema):
         """ Set the LDAP schema configuration """
         self._ldapschema = schema
         self._clearCaches()
 
-
-    security.declareProtected(manage_users, 'getSchemaConfig')
+    @security.protected(manage_users)
     def getSchemaConfig(self):
         """ Retrieve the LDAP schema configuration """
         return self._ldapschema
 
 
-    security.declareProtected(EDIT_PERMISSION, 'manage_addLDAPSchemaItem')
+    @security.protected(EDIT_PERMISSION)
     def manage_addLDAPSchemaItem( self
                                 , ldap_name
                                 , friendly_name=''
@@ -1450,16 +1301,16 @@ class LDAPUserFolder(BasicUserFolder):
                                 , 'integer' : integer
                                 }
 
+
             self.setSchemaConfig(schema)
             msg = 'LDAP Schema item "%s" added' % ldap_name
         else:
-            msg = 'LDAP Schema item "%s" already exists'  % ldap_name
+            msg = 'LDAP Schema item "%s" already exists' % ldap_name
 
         if REQUEST:
             return self.manage_ldapschema(manage_tabs_message=msg)
 
-
-    security.declareProtected(EDIT_PERMISSION, 'manage_deleteLDAPSchemaItems')
+    @security.protected(EDIT_PERMISSION)
     def manage_deleteLDAPSchemaItems(self, ldap_names=[], REQUEST=None):
         """ Delete schema items from my list of known schema items """
         if len(ldap_names) < 1:
@@ -1470,7 +1321,7 @@ class LDAPUserFolder(BasicUserFolder):
             removed = []
 
             for ldap_name in ldap_names:
-                if ldap_name in schema.keys():
+                if ldap_name in schema:
                     removed.append(ldap_name)
                     del schema[ldap_name]
 
@@ -1482,13 +1333,9 @@ class LDAPUserFolder(BasicUserFolder):
         if REQUEST:
             return self.manage_ldapschema(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'manage_addGroup')
-    def manage_addGroup( self
-                       , newgroup_name
-                       , newgroup_type='groupOfUniqueNames'
-                       , REQUEST=None
-                       ):
+    @security.protected(manage_users)
+    def manage_addGroup(self, newgroup_name,
+                        newgroup_type='groupOfUniqueNames', REQUEST=None):
         """ Add a new group in groups_base """
         if self._local_groups and newgroup_name:
             add_groups = self._additional_groups
@@ -1510,15 +1357,14 @@ class LDAPUserFolder(BasicUserFolder):
                 user = getSecurityManager().getUser()
                 try:
                     initial_member = user.getUserDN()
-                except:
+                except Exception:
                     initial_member = ''
 
             attributes[GROUP_MEMBER_MAP.get(newgroup_type)] = initial_member
 
-            err_msg = self._delegate.insert( base=self.groups_base
-                                           , rdn='cn=%s' % newgroup_name
-                                           , attrs=attributes
-                                           )
+            err_msg = self._delegate.insert(base=self.groups_base,
+                                            rdn='cn=%s' % newgroup_name,
+                                            attrs=attributes)
             msg = err_msg or 'Added new group %s' % (newgroup_name)
 
         else:
@@ -1527,8 +1373,7 @@ class LDAPUserFolder(BasicUserFolder):
         if REQUEST:
             return self.manage_grouprecords(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'manage_addUser')
+    @security.protected(manage_users)
     def manage_addUser(self, REQUEST=None, kwargs={}):
         """ Add a new user record to LDAP """
         base = self.users_base
@@ -1546,25 +1391,25 @@ class LDAPUserFolder(BasicUserFolder):
         if sub_loc:
             base = '%s,%s' % (rdn, base)
         password = source.get('user_pw', '')
-        confirm  = source.get('confirm_pw', '')
+        confirm = source.get('confirm_pw', '')
 
         if password != confirm or password == '':
             msg = 'The password and confirmation do not match!'
 
         else:
-            encrypted_pwd = _createLDAPPassword( password
-                                               , self._pwd_encryption
-                                               )
+            encrypted_pwd = _createLDAPPassword(password, self._pwd_encryption)
             attr_dict['userPassword'] = encrypted_pwd
             attr_dict['objectClass'] = self._user_objclasses
 
             for attribute, names in self.getSchemaConfig().items():
+                if attribute == 'objectClass':
+                    continue
                 attr_val = source.get(attribute, None)
 
                 if names.get('binary', None) and attr_val:
                     attr_dict['%s;binary' % attribute] = [attr_val]
-                #elif names.get('integer', None) and attr_val:
-                #    attr_dict['%s;integer' % attribute] = [int(attr_val)]
+                elif names.get('integer', None) and attr_val:
+                    attr_dict['%s;integer' % attribute] = attr_val
                 elif attr_val:
                     attr_dict[attribute] = attr_val
                 elif names.get('public_name', None):
@@ -1573,17 +1418,13 @@ class LDAPUserFolder(BasicUserFolder):
                     if attr_val:
                         attr_dict[attribute] = attr_val
 
-            msg = self._delegate.insert( base=base
-                                       , rdn=rdn
-                                       , attrs=attr_dict
-                                       )
+            msg = self._delegate.insert(base=base, rdn=rdn, attrs=attr_dict)
 
         if msg:
             if REQUEST:
                 return self.manage_userrecords(manage_tabs_message=msg)
             else:
                 return msg
-
 
         if not msg:
             user_dn = '%s,%s' % (rdn, base)
@@ -1600,19 +1441,18 @@ class LDAPUserFolder(BasicUserFolder):
                             try:
                                 exploded = self._delegate.explode_dn(role)
                                 elements = len(exploded)
-                            except:
+                            except Exception:
                                 elements = 1
 
                             if elements == 1:  # simple string
-                                role = 'cn=%s,%s' % ( str(role)
-                                                    , self.groups_base
-                                                    )
+                                role = 'cn=%s,%s' % (str(role),
+                                                     self.groups_base)
 
                             group_dns.append(role)
 
                             try:
                                 self.manage_editUserRoles(user_dn, group_dns)
-                            except:
+                            except Exception:
                                 raise
 
                 # Clear the caches for the purpose of clearing any user ID
@@ -1625,12 +1465,10 @@ class LDAPUserFolder(BasicUserFolder):
                 user_dn = ''
 
         if REQUEST:
-            return self.manage_userrecords( manage_tabs_message=msg
-                                          , user_dn='%s,%s' % (rdn, base)
-                                          )
+            return self.manage_userrecords(manage_tabs_message=msg,
+                                           user_dn='%s,%s' % (rdn, base))
 
-
-    security.declareProtected(manage_users, 'manage_deleteGroups')
+    @security.protected(manage_users)
     def manage_deleteGroups(self, dns=[], REQUEST=None):
         """ Delete groups from groups_base """
         msg = ''
@@ -1660,8 +1498,7 @@ class LDAPUserFolder(BasicUserFolder):
         if REQUEST:
             return self.manage_grouprecords(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'manage_deleteUsers')
+    @security.protected(manage_users)
     def manage_deleteUsers(self, dns=[], REQUEST=None):
         """ Delete all users in list dns """
         if len(dns) < 1:
@@ -1690,10 +1527,9 @@ class LDAPUserFolder(BasicUserFolder):
                         member_type = GROUP_MEMBER_MAP.get(group_type)
                         del_op = self._delegate.DELETE
 
-                        msg = self._delegate.modify( dn=group
-                                                   , mod_type=del_op
-                                                   , attrs={member_type : [dn]}
-                                                   )
+                        msg = self._delegate.modify(dn=group,
+                                                    mod_type=del_op,
+                                                    attrs={member_type: [dn]})
 
             msg = 'Deleted user(s):<br> %s' % '<br>'.join(dns)
             self._clearCaches()
@@ -1701,8 +1537,7 @@ class LDAPUserFolder(BasicUserFolder):
         if REQUEST:
             return self.manage_userrecords(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'manage_editUserPassword')
+    @security.protected(manage_users)
     def manage_editUserPassword(self, dn, new_pw, REQUEST=None):
         """ Change a user password """
         err_msg = msg = ''
@@ -1712,21 +1547,18 @@ class LDAPUserFolder(BasicUserFolder):
 
         else:
             ldap_pw = _createLDAPPassword(new_pw, self._pwd_encryption)
-            err_msg = self._delegate.modify( dn=dn
-                                           , attrs={'userPassword':[ldap_pw]}
-                                           )
+            err_msg = self._delegate.modify(dn=dn,
+                                            attrs={'userPassword': [ldap_pw]})
             if not err_msg:
                 msg = 'Password changed for "%s"' % dn
                 user_obj = self.getUserByDN(to_utf8(dn))
                 self._expireUser(user_obj)
 
         if REQUEST:
-            return self.manage_userrecords( manage_tabs_message=err_msg or msg
-                                          , user_dn=dn
-                                          )
+            return self.manage_userrecords(manage_tabs_message=err_msg or msg,
+                                           user_dn=dn)
 
-
-    security.declareProtected(manage_users, 'manage_editUserRoles')
+    @security.protected(manage_users)
     def manage_editUserRoles(self, user_dn, role_dns=[], REQUEST=None):
         """ Edit the roles (groups) of a user """
         msg = ''
@@ -1750,15 +1582,11 @@ class LDAPUserFolder(BasicUserFolder):
                 member_attr = GROUP_MEMBER_MAP.get(self.getGroupType(group))
 
                 if group in cur_groups and group not in group_dns:
-                    msg = self._delegate.modify( group
-                                               , self._delegate.DELETE
-                                               , {member_attr : [user_dn]}
-                                               )
+                    msg = self._delegate.modify(group, self._delegate.DELETE,
+                                                {member_attr: [user_dn]})
                 elif group in group_dns and group not in cur_groups:
-                    msg = self._delegate.modify( group
-                                               , self._delegate.ADD
-                                               , {member_attr : [user_dn]}
-                                               )
+                    msg = self._delegate.modify(group, self._delegate.ADD,
+                                                {member_attr: [user_dn]})
 
         msg = msg or 'Roles changed for %s' % (user_dn)
         user_obj = self.getUserByDN(to_utf8(user_dn))
@@ -1766,12 +1594,10 @@ class LDAPUserFolder(BasicUserFolder):
             self._expireUser(user_obj)
 
         if REQUEST:
-            return self.manage_userrecords( manage_tabs_message=msg
-                                          , user_dn=user_dn
-                                          )
+            return self.manage_userrecords(manage_tabs_message=msg,
+                                           user_dn=user_dn)
 
-
-    security.declareProtected(manage_users, 'manage_setUserProperty')
+    @security.protected(manage_users)
     def manage_setUserProperty(self, user_dn, prop_name, prop_value):
         """ Set a new attribute on the user record """
         schema = self.getSchemaConfig()
@@ -1780,6 +1606,7 @@ class LDAPUserFolder(BasicUserFolder):
         is_integer = prop_info.get('integer', None)
 
         if isinstance(prop_value, str):
+
             if is_binary or is_integer:
                 prop_value = [prop_value]
             elif not prop_info.get('multivalued', ''):
@@ -1791,9 +1618,8 @@ class LDAPUserFolder(BasicUserFolder):
             for i in range(len(prop_value)):
                 prop_value[i] = to_utf8(prop_value[i])
 
-        cur_rec = self._delegate.search( base=user_dn
-                                       , scope=self._delegate.BASE
-                                       )
+        cur_rec = self._delegate.search(base=user_dn,
+                                        scope=self._delegate.BASE)
 
         if cur_rec['exception'] or cur_rec['size'] == 0:
             exc = cur_rec['exception']
@@ -1812,23 +1638,20 @@ class LDAPUserFolder(BasicUserFolder):
                 mod = self._delegate.DELETE
 
             if is_binary:
-                attrs = { '%s;binary' % prop_name : prop_value }
-            #elif is_integer:
-            #    attrs = { '%s;integer' % prop_name : prop_value }
+                attrs = {'%s;binary' % prop_name: prop_value}
+            elif is_integer:
+                attrs = {'%s;integer' % prop_name: prop_value}
             else:
-                attrs = { prop_name : prop_value }
+                attrs = {prop_name: prop_value}
 
-            err_msg = self._delegate.modify( dn=user_dn
-                                           , mod_type=mod
-                                           , attrs=attrs
-                                           )
+            err_msg = self._delegate.modify(dn=user_dn, mod_type=mod,
+                                            attrs=attrs)
 
             if not err_msg:
                 user_obj = self.getUserByDN(to_utf8(user_dn))
                 self._expireUser(user_obj)
 
-
-    security.declareProtected(manage_users, 'manage_editUser')
+    @security.protected(manage_users)
     def manage_editUser(self, user_dn, REQUEST=None, kwargs={}):
         """ Edit a user record """
         schema = self.getSchemaConfig()
@@ -1869,9 +1692,8 @@ class LDAPUserFolder(BasicUserFolder):
 
         if msg:
             if REQUEST:
-                return self.manage_userrecords( manage_tabs_message=msg
-                                              , user_dn=user_dn
-                                              )
+                return self.manage_userrecords(manage_tabs_message=msg,
+                                               user_dn=user_dn)
             else:
                 return msg
 
@@ -1903,64 +1725,55 @@ class LDAPUserFolder(BasicUserFolder):
                     group_type = self.getGroupType(group)
                     member_type = GROUP_MEMBER_MAP.get(group_type)
 
-                    msg = self._delegate.modify( group
-                                               , self._delegate.DELETE
-                                               , {member_type : [user_dn]}
-                                               )
-                    msg = self._delegate.modify( group
-                                               , self._delegate.ADD
-                                               , {member_type : [new_dn]}
-                                               )
+                    msg = self._delegate.modify(group, self._delegate.DELETE,
+                                                {member_type: [user_dn]})
+                    msg = self._delegate.modify(group, self._delegate.ADD,
+                                                {member_type: [new_dn]})
 
         self._expireUser(cur_user.getProperty(rdn))
         msg = msg or 'User %s changed' % (new_dn or user_dn)
 
         if REQUEST:
-            return self.manage_userrecords( manage_tabs_message=msg
-                                          , user_dn=new_dn or user_dn
-                                          )
+            return self.manage_userrecords(manage_tabs_message=msg,
+                                           user_dn=new_dn or user_dn)
 
-    security.declareProtected(manage_users, '_expireUser')
+    @security.protected(manage_users)
     def _expireUser(self, user):
         """ Purge user object from caches """
         user = user or ''
 
-        if not isinstance(user, (str, bytes)):
+
+        if not isinstance(user, str):
             user = user.getUserName()
 
-        self._cache('anonymous').remove(user)
-        self._cache('authenticated').remove(user)
+        self._cache('anonymous').invalidate(user)
+        self._cache('authenticated').invalidate(user)
 
         # This only removes records from the negative cache which
         # were retrieved without a password, since down here we do not
         # know that password. Only login and uid records are removed.
         for name in (self._login_attr, self._uid_attr):
-            negative_cache_key = '%s:%s:%s' % ( name
-                                              , user
-                                              , sha_new(b'').hexdigest()
-                                              )
-            self._cache('negative').remove(negative_cache_key)
 
+            negative_cache_key = '%s:%s:%s' % (name, user,
+                                               sha1(str('').encode('utf-8')).hexdigest())
+            self._cache('negative').invalidate(negative_cache_key)
 
-    security.declareProtected(manage_users, 'isUnique')
+    @security.protected(manage_users)
     def isUnique(self, attr, value):
-        """
-            Find out if any objects have the same attribute value.
+        """ Find out if any objects have the same attribute value.
             This method should be called when a new user record is
             about to be created. It guards uniqueness of names by
             warning for items with the same name.
         """
-        search_str = filter_format('(%s=%s)', (attr, str(value)))
-        res = self._delegate.search( base=self.users_base
-                                   , scope=self.users_scope
-                                   , filter=search_str
-                                   )
+        search_str = self._delegate.filter_format('(%s=%s)',
+                                                  (attr, str(value)))
+        res = self._delegate.search(base=self.users_base,
+                                    scope=self.users_scope, filter=search_str)
 
         if res['exception']:
             return res['exception']
 
         return res['size'] < 1
-
 
     def getEncryptions(self):
         """ Return the possible encryptions """
@@ -1969,34 +1782,25 @@ class LDAPUserFolder(BasicUserFolder):
         else:
             return ('crypt', 'SHA', 'SSHA', 'md5', 'clear')
 
-
-    security.declarePrivate('_cache')
     def _cache(self, cache_type='anonymous'):
         """ Get the specified user cache """
-        return getResource( '%s-%scache' % (self._hash, cache_type)
-                          , SimpleCache
-                          , ()
-                          )
+        cache = getResource('%s-%scache' % (self._hash, cache_type),
+                            UserCache, ())
+        cache.setTimeout(self.getCacheTimeout(cache_type))
+        return cache
 
-
-    security.declarePrivate('_misc_cache')
     def _misc_cache(self):
         """ Return the miscellaneous cache """
-        return getResource('%s-misc_cache' % self._hash, SharedObject, ())
+        return getResource('%s-misc_cache' % self._hash, SimpleCache, ())
 
-
-    security.declareProtected(manage_users, 'getCacheTimeout')
+    @security.protected(manage_users)
     def getCacheTimeout(self, cache_type='anonymous'):
         """ Retrieve the cache timout value (in seconds) """
         return getattr(self, '_%s_timeout' % cache_type, 600)
 
-
-    security.declareProtected(manage_users, 'setCacheTimeout')
-    def setCacheTimeout( self
-                       , cache_type='anonymous'
-                       , timeout=600
-                       , REQUEST=None
-                       ):
+    @security.protected(manage_users)
+    def setCacheTimeout(self, cache_type='anonymous', timeout=600,
+                        REQUEST=None):
         """ Set the cache timeout """
         if not timeout and timeout != 0:
             timeout = 600
@@ -2011,25 +1815,26 @@ class LDAPUserFolder(BasicUserFolder):
             msg = 'Cache timeout changed'
             return self.manage_cache(manage_tabs_message=msg)
 
-
-    security.declareProtected(manage_users, 'getCurrentServer')
+    @security.protected(manage_users)
     def getCurrentServer(self):
         """ Simple UI Helper to show who we are currently connected to. """
         try:
             conn = self._delegate.connect()
-        except:
+        except Exception:
             conn = None
 
         return getattr(conn, '_uri', '-- not connected --')
 
-    security.declareProtected(manage_users, 'getEncryptedBindPassword')
+
+    @security.protected(manage_users)
     def getEncryptedBindPassword(self):
         """ Return a hashed bind password for safe use in forms etc.
         """
-        return sha_new(self.getProperty('_bindpwd').encode()).hexdigest()
+        return sha1(str(self.getProperty('_bindpwd')).encode('utf-8')).hexdigest()
 
 
-def manage_addLDAPUserFolder(self, delegate_type='LDAP delegate', REQUEST=None):
+def manage_addLDAPUserFolder(self, delegate_type='LDAP delegate',
+                             REQUEST=None):
     """ Called by Zope to create and install an LDAPUserFolder """
     this_folder = self.this()
 
@@ -2047,8 +1852,8 @@ def manage_addLDAPUserFolder(self, delegate_type='LDAP delegate', REQUEST=None):
     # return to the parent object's manage_main
     if REQUEST is not None:
         url = this_folder.acl_users.absolute_url()
-        #url = REQUEST['URL1']
         qs = 'manage_tabs_message=%s' % msg
         REQUEST.RESPONSE.redirect('%s/manage_main?%s' % (url, qs))
+
 
 InitializeClass(LDAPUserFolder)

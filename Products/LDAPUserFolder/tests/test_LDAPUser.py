@@ -11,42 +11,43 @@
 #
 ##############################################################################
 """ Tests for the LDAPUser class
-
-$Id$
 """
-
-# General Python imports
+import os
 import unittest
 
-# Zope imports
+from App.Common import package_home
 from DateTime.DateTime import DateTime
 
-# LDAPUserFolder package imports
-from Products.LDAPUserFolder.LDAPUser import LDAPUser
-from Products.LDAPUserFolder.tests.config import user
-from Products.LDAPUserFolder.tests.config import defaults
+from ..LDAPUser import LDAPUser
+from .config import defaults
+from .config import user
+
+
 ug = user.get
 dg = defaults.get
+
 
 class TestLDAPUser(unittest.TestCase):
 
     def setUp(self):
-        self.u_ob = LDAPUser( ug('cn')
-                            , ug('mail')
-                            , ug('user_pw')
-                            , ug('user_roles')
-                            , []
-                            , 'cn=%s,%s' % (ug('cn'), dg('users_base'))
-                            , { 'cn' : [ug('cn')]
-                              , 'sn' : [ug('sn')]
-                              , 'mail' : [ug('mail')]
-                              , 'givenName' : [ug('givenName')]
-                              , 'objectClasses' : ug('objectClasses')
-                              }
-                            , ug('mapped_attrs').items()
-                            , ug('multivalued_attrs')
-                            , ldap_groups=ug('ldap_groups')
-                            )
+        test_home = package_home(globals())
+        image_path = os.path.join(test_home, 'test.jpg')
+        image_file = open(image_path, 'rb')
+        self.image_contents = image_file.read()
+        image_file.close()
+
+        u_attrs = {'cn': [ug('cn')], 'sn': [ug('sn')], 'mail': [ug('mail')],
+                   'givenName': [ug('givenName')],
+                   'jpegPhoto': [self.image_contents],
+                   'objectClasses': ug('objectClasses')}
+        self.u_ob = LDAPUser(ug('cn'), ug('mail'), ug('user_pw'),
+                             ug('user_roles'), [],
+                             'cn=%s,%s' % (ug('cn'),
+                                           dg('users_base')), u_attrs,
+                             list(ug('mapped_attrs').items()),
+                             ug('multivalued_attrs'),
+                             ug('binary_attrs'),
+                             ldap_groups=ug('ldap_groups'))
 
     def testLDAPUserInstantiation(self):
         ae = self.assertEqual
@@ -59,26 +60,33 @@ class TestLDAPUser(unittest.TestCase):
         ae(u.getId(), ug('cn'))
         ae(u.getUserName(), ug('mail'))
         for role in ug('user_roles'):
-            self.assert_(role in u.getRoles())
-        self.assert_('Authenticated' in u.getRoles())
+            self.assertTrue(role in u.getRoles())
+        self.assertTrue('Authenticated' in u.getRoles())
         ae(u.getProperty('dn'), 'cn=%s,%s' % (ug('cn'), dg('users_base')))
         ae(u.getUserDN(), 'cn=%s,%s' % (ug('cn'), dg('users_base')))
         ae(u._getLDAPGroups(), tuple(ug('ldap_groups')))
-        self.assert_(DateTime() >= u.getCreationTime())
+        self.assertTrue(DateTime() >= u.getCreationTime())
 
     def testUnicodeAttributes(self):
         # Internally, most attributes are stored as unicode.
         # Test some to make sure.
-        self.failUnless(isinstance(self.u_ob.id, unicode))
-        self.failUnless(isinstance(self.u_ob.name, unicode))
-        self.failUnless(isinstance(self.u_ob._properties['givenName'], unicode))
+        self.assertTrue(isinstance(self.u_ob.id, unicode))
+        self.assertTrue(isinstance(self.u_ob.name, unicode))
+        self.assertTrue(isinstance(self.u_ob._properties['givenName'],
+                                   unicode))
+
+    def testBinaryAttributes(self):
+        # Some attributes are marked binary
+        # These must not get encoded by _verifyUnicode
+        self.assertTrue(
+            self.u_ob._properties['jpegPhoto'] == self.image_contents)
 
     def testMappedAttrs(self):
         ae = self.assertEqual
         u = self.u_ob
-        map = ug('mapped_attrs')
+        attr_map = ug('mapped_attrs')
 
-        for key, mapped_key in map.items():
+        for key, mapped_key in attr_map.items():
             ae(u.getProperty(key), u.getProperty(mapped_key))
 
     def testMultivaluedAttributes(self):
@@ -86,21 +94,10 @@ class TestLDAPUser(unittest.TestCase):
         multivals = ug('multivalued_attrs')
 
         for mv in multivals:
-            self.failUnless(isinstance(u.getProperty(mv), (list, tuple)))
+            self.assertTrue(isinstance(u.getProperty(mv), (list, tuple)))
 
     def testNameIdNotUnicode(self):
         # Make sure name and ID are never unicode
         u = self.u_ob
-        self.failIf(isinstance(u.getUserName(), unicode))
-        self.failIf(isinstance(u.getId(), unicode))
-
-
-def test_suite():
-    suite = unittest.TestSuite()
-    suite.addTest(unittest.makeSuite(TestLDAPUser))
-
-    return suite
-
-if __name__ == '__main__':
-    unittest.main(defaultTest='test_suite')
-    
+        self.assertFalse(isinstance(u.getUserName(), unicode))
+        self.assertFalse(isinstance(u.getId(), unicode))

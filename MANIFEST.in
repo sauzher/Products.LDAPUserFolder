@@ -1,8 +1,9 @@
-recursive-include Products *
+include *.cfg
 include *.rst
 include *.txt
-include *.py
+exclude .*.cfg
+
+recursive-include Products *
+
 global-exclude *.pyc
-global-exclude ._*
-global-exclude *.mo
-global-exclude buildout.cfg
+global-exclude *.pyo

@@ -11,23 +11,19 @@
 #
 ##############################################################################
 """ Utility functions and constants
-
-$Id$
 """
 
 import base64
-import codecs
-try:
-    from hashlib import md5 as md5_new
-except ImportError:
-    from md5 import new as md5_new
+
+from hashlib import md5
+
 
 from AccessControl import AuthEncoding
+
 
 #################################################
 # "Safe" imports for use in the other modules
 #################################################
-
 try:
     import crypt
 except ImportError:
@@ -36,22 +32,24 @@ except ImportError:
 #################################################
 # Constants used in other modules
 #################################################
-
 BINARY_ATTRIBUTES = ('objectguid', 'jpegphoto')
 
 HTTP_METHODS = ('GET', 'PUT', 'POST')
 
-GROUP_MEMBER_MAP = {'groupOfUniqueNames': 'uniqueMember', 'groupOfNames': 'member', 'accessGroup': 'member', 'group': 'member', 'univentionGroup': 'uniqueMember'
-                    }
+
+GROUP_MEMBER_MAP = {'groupOfUniqueNames': 'uniqueMember',
+                    'groupOfNames': 'member',
+                    'accessGroup': 'member',
+                    'group': 'member',
+                    'univentionGroup': 'uniqueMember'}
 
 GROUP_MEMBER_ATTRIBUTES = set(list(GROUP_MEMBER_MAP.values()))
 
-VALID_GROUP_ATTRIBUTES = set(['name', 'displayName', 'cn', 'dn', 'objectGUID', 'description', 'mail'
-                              ]).union(GROUP_MEMBER_ATTRIBUTES)
+VALID_GROUP_ATTRIBUTES = set(['name', 'displayName', 'cn', 'dn',
+                              'objectGUID', 'description',
+                              'mail']).union(GROUP_MEMBER_ATTRIBUTES)
+encoding = 'latin1'
 
-encoding = 'utf-8'
-
-unicode = str
 
 #################################################
 # Helper methods for other modules
@@ -60,7 +58,7 @@ unicode = str
 
 def _verifyUnicode(st):
     """ Verify that the string is unicode """
-    if isinstance(st, unicode):
+    if isinstance(st, str):
         return st
     else:
         try:
@@ -77,7 +75,7 @@ def _createLDAPPassword(password, encoding='SHA'):
     if encoding in ('SSHA', 'SHA', 'CRYPT'):
         pwd_str = AuthEncoding.pw_encrypt(password, encoding)
     elif encoding == 'MD5':
-        m = md5_new(password)
+        m = md5(password)
         pwd_str = '{MD5}' + base64.encodestring(m.digest())
     elif encoding == 'CLEAR':
         pwd_str = password
@@ -86,28 +84,13 @@ def _createLDAPPassword(password, encoding='SHA'):
 
     return pwd_str.strip()
 
+def from_utf8(s):
+    if type(s) is not str:
+        s = s.decode()
+    return s
 
-try:
-    encodeLocal, decodeLocal, reader = codecs.lookup(encoding)[:3]
-    encodeUTF8, decodeUTF8 = codecs.lookup('UTF-8')[:2]
-
-    if getattr(reader, '__module__', '') == 'encodings.utf_8':
-        # Everything stays UTF-8, so we can make this cheaper
-        to_utf8 = from_utf8 = str
-
-    else:
-
-        def from_utf8(s):
-            return encodeLocal(decodeUTF8(s)[0])[0]
-
-        def to_utf8(s):
-            if isinstance(s, bytes):
-                s = decodeLocal(s)[0]
-            return encodeUTF8(s)[0]
-
-except LookupError:
-    raise LookupError('Unknown encoding "{}"'.format(encoding))
-
+def to_utf8(s):
+    return s
 
 def guid2string(val):
     """ convert an active directory binary objectGUID value as returned by
@@ -130,8 +113,9 @@ def registerDelegate(name, klass, description=''):
     klass is a reference to the delegate class itself
     description is a more verbose delegate description
     """
-    delegate_registry[name] = {'name': name, 'klass': klass, 'description': description
-                               }
+
+    delegate_registry[name] = {'name': name, 'klass': klass,
+                               'description': description}
 
 
 def registeredDelegates():
